@@ -1,0 +1,16 @@
+Get-ChildItem "resources\views\reports\*.blade.php" | ForEach-Object {
+
+    $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+
+    $wrongText = [System.Text.Encoding]::UTF8.GetString($bytes)
+
+    $fixedBytes = [System.Text.Encoding]::GetEncoding(1252).GetBytes($wrongText)
+
+    [System.IO.File]::WriteAllText(
+        $_.FullName,
+        [System.Text.Encoding]::UTF8.GetString($fixedBytes),
+        [System.Text.Encoding]::UTF8
+    )
+
+    Write-Host "Fixed:" $_.Name
+}

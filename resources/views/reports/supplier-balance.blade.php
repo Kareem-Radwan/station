@@ -1,0 +1,207 @@
+﻿@extends('layouts.app')
+@section('title', 'تقرير كشف حساب مورد')
+@section('content')
+
+@include('partials.page-header', ['title' => 'تقرير كشف حساب مورد', 'icon' => 'fa-truck'])
+
+<div class="card p-6 mb-6">
+    <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div>
+            <label class="block text-slate-400 text-xs mb-1">المورد</label>
+            <select name="supplier_id" class="input-field w-full px-3 py-2 text-sm" required>
+                <option value="">اختر المورد...</option>
+                @foreach(\App\Models\Supplier::orderBy('name')->get() as $s)
+                <option value="{{ $s->id }}" {{ request('supplier_id')==$s->id?'selected':'' }}>{{ $s->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div>
+            <label class="block text-slate-400 text-xs mb-1">من تاريخ</label>
+            <input type="date" name="from_date" value="{{ request('from_date', today()->startOfMonth()->toDateString()) }}" class="input-field w-full px-3 py-2 text-sm">
+        </div>
+        <div>
+            <label class="block text-slate-400 text-xs mb-1">إلى تاريخ</label>
+            <input type="date" name="to_date" value="{{ request('to_date', today()->toDateString()) }}" class="input-field w-full px-3 py-2 text-sm">
+        </div>
+        <div class="flex gap-2">
+            <button type="submit" class="btn-primary text-white px-4 py-2 rounded-lg text-sm w-full"><i class="fas fa-filter"></i> عرض التقرير</button>
+            @if(request('supplier_id'))
+            <button type="submit" name="export" value="excel" class="btn-accent text-slate-900 px-4 py-2 rounded-lg text-sm whitespace-nowrap"><i class="fas fa-file-excel"></i> إكسل</button>
+            @endif
+        </div>
+    </form>
+</div>
+
+@if(request('supplier_id') && isset($supplier))
+
+{{-- Supplier Info Banner --}}
+<div class="card p-5 mb-5 border border-slate-700/50">
+    <div class="flex flex-wrap items-start gap-6">
+        <div class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-truck text-blue-400 text-lg"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 mb-2">
+                <h2 class="text-white font-bold text-xl">{{ $supplier->name }}</h2>
+                <span class="badge {{ $supplier->is_active ? 'badge-green' : 'badge-gray' }}">{{ $supplier->is_active ? 'نشط' : 'موقف' }}</span>
+                <span class="badge badge-purple">{{ $supplier->payment_type_label }}</span>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                @if($supplier->phone)
+                <div class="flex items-center gap-2 text-slate-300">
+                    <i class="fas fa-phone text-slate-500 text-xs w-4"></i>
+                    <span>{{ $supplier->phone }}</span>
+                </div>
+                @endif
+                @if($supplier->address)
+                <div class="flex items-center gap-2 text-slate-300">
+                    <i class="fas fa-map-marker-alt text-slate-500 text-xs w-4"></i>
+                    <span>{{ $supplier->address }}</span>
+                </div>
+                @endif
+                @if(is_array($supplier->materials) && count($supplier->materials))
+
+                <div class="flex items-center gap-2 text-slate-300">
+                    <i class="fas fa-boxes text-slate-500 text-xs w-4"></i>
+                    <span>{{ implode('، ', $supplier->materials) }}</span>
+                </div>
+                @endif
+                <div class="flex items-center gap-2 text-slate-300">
+                    <i class="fas fa-wallet text-slate-500 text-xs w-4"></i>
+                    <span>رصيد جاري: {{ number_format($supplier->balance ?? 0, 0) }}</span>
+                </div>
+            </div>
+            @if($supplier->notes)
+            <div class="mt-2 text-slate-400 text-xs bg-slate-800/50 rounded-lg px-3 py-2">{{ $supplier->notes }}</div>
+            @endif
+        </div>
+    </div>
+</div>
+
+{{-- Summary Cards --}}
+@php
+    $hasCars = $totalRentalShifts > 0;
+    if ($hasCars) {
+        $calculatedBalance = $totalRentalShifts - ($totalDeductions + $totalPayments);
+    } else {
+        $calculatedBalance = $totalPurchases - $totalPayments - $totalDeductions;
+    }
+@endphp
+
+<div class="grid grid-cols-1 md:grid-cols-{{ $hasCars ? '4' : '4' }} gap-5 mb-6">
+    @if(!$hasCars)
+    <div class="stat-card rounded-2xl p-5 border border-slate-700/50">
+        <p class="text-slate-400 text-xs mb-1">إجمالي المشتريات</p>
+        <p class="text-2xl font-bold text-white">{{ number_format($totalPurchases, 0) }}</p>
+    </div>
+    @endif
+    <div class="stat-card rounded-2xl p-5 border border-slate-700/50">
+        <p class="text-slate-400 text-xs mb-1">إجمالي المدفوعات</p>
+        <p class="text-2xl font-bold text-green-400">{{ number_format($totalPayments, 0) }}</p>
+    </div>
+    <div class="stat-card rounded-2xl p-5 border border-slate-700/50">
+        <p class="text-slate-400 text-xs mb-1">الخصومات</p>
+        <p class="text-2xl font-bold text-blue-400">{{ number_format($totalDeductions ?? 0, 0) }}</p>
+    </div>
+    @if($hasCars)
+    <div class="stat-card rounded-2xl p-5 border border-slate-700/50">
+        <p class="text-slate-400 text-xs mb-1">ورديات السيارات</p>
+        <p class="text-2xl font-bold text-amber-400">{{ number_format($totalRentalShifts ?? 0, 0) }}</p>
+    </div>
+    @endif
+    <div class="stat-card rounded-2xl p-5 border {{ $calculatedBalance > 0 ? 'border-amber-500/30' : ($calculatedBalance < 0 ? 'border-green-500/30' : 'border-slate-700/50') }}">
+        <p class="text-slate-400 text-xs mb-1">الرصيد للفترة المحددة</p>
+        <p class="text-2xl font-bold {{ $calculatedBalance > 0 ? 'text-amber-400' : ($calculatedBalance < 0 ? 'text-green-400' : 'text-slate-400') }}">
+            @if($calculatedBalance > 0)
+                دائن (مطلوب له) {{ number_format($calculatedBalance, 0) }}
+            @elseif($calculatedBalance < 0)
+                مدين (دفعنا زيادة) {{ number_format(abs($calculatedBalance), 0) }}
+            @else
+                متعادل
+            @endif
+        </p>
+    </div>
+</div>
+
+{{-- Transactions Table --}}
+<div class="card overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-700 flex items-center justify-between">
+        <h3 class="text-white font-semibold text-sm flex items-center gap-2">
+            <i class="fas fa-list text-blue-400"></i>
+            حركات حساب المورد
+        </h3>
+        <span class="text-slate-400 text-xs">{{ $transactions->count() }} حركة</span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-slate-800/50 border-b border-slate-700 text-xs">
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">التاريخ</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">البيان</th>
+                    <th class="px-4 py-3 text-center text-slate-400 font-medium">نوع الحركة</th>
+                    <th class="px-4 py-3 text-center text-slate-400 font-medium">مدين (دفعنا له)</th>
+                    <th class="px-4 py-3 text-center text-slate-400 font-medium">دائن (اشترينا منه)</th>
+                    <th class="px-4 py-3 text-center text-slate-400 font-medium">الرصيد التراكمي</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                @forelse($transactions as $t)
+                <tr class="table-row hover:bg-slate-800/30 transition {{ isset($t->tx_type) && $t->tx_type === 'payment' ? 'bg-green-900/5' : '' }} {{ isset($t->tx_type) && $t->tx_type === 'rental_shift' ? 'bg-amber-900/5' : '' }}">
+                    <td class="px-4 py-3 text-slate-300 whitespace-nowrap">{{ \Carbon\Carbon::parse($t->date)->format('d/m/Y') }}</td>
+                    <td class="px-4 py-3 text-white">
+                        {!! $t->description !!}
+                        @if(isset($t->shift_details))
+                            <div class="text-xs text-slate-400 mt-1">
+                                <span>ساعات: {{ $t->shift_details->hours }}</span>
+                                @if($t->shift_details->gratuities > 0)
+                                    <span class="mr-2">اكراميات: {{ number_format($t->shift_details->gratuities, 0) }}</span>
+                                @endif
+                                @if($t->shift_details->cards_cost > 0)
+                                    <span class="mr-2">كارتات: {{ number_format($t->shift_details->cards_cost, 0) }}</span>
+                                @endif
+                                @if($t->shift_details->driver_allowance > 0)
+                                    <span class="mr-2">معيشة: {{ number_format($t->shift_details->driver_allowance, 0) }}</span>
+                                @endif
+                                @if($t->shift_details->fuel_cost > 0)
+                                    <span class="mr-2">وقود: {{ number_format($t->shift_details->fuel_cost, 0) }}</span>
+                                @endif
+                            </div>
+                        @endif
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        @if(isset($t->tx_type))
+                            @if($t->tx_type === 'purchase')
+                                <span class="badge badge-blue">مشتريات</span>
+                            @elseif($t->tx_type === 'stock_in')
+                                <span class="badge badge-red">وارد مخزون</span>
+                            @elseif($t->tx_type === 'payment')
+                                <span class="badge badge-green">دفعة</span>
+                            @elseif($t->tx_type === 'credit_payment')
+                                <span class="badge badge-yellow">سداد آجل</span>
+                            @elseif($t->tx_type === 'deduction')
+                                <span class="badge badge-red">خصم</span>
+                            @elseif($t->tx_type === 'rental_shift')
+                                <span class="badge badge-yellow">وردية</span>
+                            @endif
+                        @endif
+                    </td>
+                    <td class="px-4 py-3 text-center text-green-400 font-bold">{{ $t->debit > 0 ? number_format($t->debit, 0) : '-' }}</td>
+                    <td class="px-4 py-3 text-center text-red-400">{{ $t->credit > 0 ? number_format($t->credit, 0) : '-' }}</td>
+                    <td class="px-4 py-3 text-center font-bold {{ isset($t->running_balance) ? ($t->running_balance > 0 ? 'text-amber-400' : ($t->running_balance < 0 ? 'text-green-400' : 'text-slate-400')) : 'text-slate-600' }}">
+                        @if(isset($t->running_balance))
+                            {{ $t->running_balance > 0 ? 'له ' : ($t->running_balance < 0 ? 'عليه ' : '') }}{{ number_format(abs($t->running_balance), 0) }}
+                        @else
+                            <span class="text-slate-500 text-xs">غير محسوب</span>
+                        @endif
+                    </td>
+                </tr>
+                @empty
+                <tr><td colspan="6" class="px-4 py-12 text-center text-slate-500">لا توجد حركات في هذه الفترة</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+@endsection
+

@@ -1,0 +1,109 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Customer;
+use App\Models\CustomerPayment;
+use App\Models\InventoryMovement;
+use Illuminate\Http\Request;
+
+class CustomerController extends Controller
+{
+    public function index(Request $request)
+    {
+        $query = Customer::query();
+
+        if ($request->search) {
+            $query->where('name', 'like', '%'.$request->search.'%')
+                  ->orWhere('phone', 'like', '%'.$request->search.'%');
+        }
+        if ($request->type) $query->where('concrete_type', $request->type);
+        if ($request->status === 'active')   $query->where('is_active', true);
+        if ($request->status === 'inactive') $query->where('is_active', false);
+
+        $customers = $query->withCount('orders')->latest()->paginate(20)->withQueryString();
+
+        return view('customers.index', compact('customers'));
+    }
+
+    public function create()
+    {
+        return view('customers.create');
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name'             => 'required|string|max:255',
+            'phone'            => 'nullable|string|max:20',
+            'address'          => 'nullable|string',
+            'location'         => 'nullable|string|max:255',
+            'notes'            => 'nullable|string',
+            'concrete_type'    => 'required|in:operational,complete',
+            'payment_type'     => 'required|in:cash,credit,mixed',
+            'cement_balance'   => 'nullable|numeric|min:0',
+            'concrete_strength'=> 'nullable|integer|in:180,250,300',
+            'cement_content'   => 'nullable|numeric|min:0',
+        ]);
+
+        Customer::create($validated);
+
+        return redirect()->route('customers.index')->with('success', 'تم إضافة العميل بنجاح');
+    }
+
+    public function show(Customer $customer)
+    {
+        $customer->load(['orders.concreteMix', 'payments', 'credits']);
+        return view('customers.show', compact('customer'));
+    }
+
+    public function edit(Customer $customer)
+    {
+        return view('customers.edit', compact('customer'));
+    }
+
+    public function update(Request $request, Customer $customer)
+    {
+        $validated = $request->validate([
+            'name'             => 'required|string|max:255',
+            'phone'            => 'nullable|string|max:20',
+            'address'          => 'nullable|string',
+            'location'         => 'nullable|string|max:255',
+            'notes'            => 'nullable|string',
+            'concrete_type'    => 'required|in:operational,complete',
+            'payment_type'     => 'required|in:cash,credit,mixed',
+            'concrete_strength'=> 'nullable|integer|in:180,250,300',
+            'cement_content'   => 'nullable|numeric|min:0',
+            'is_active'        => 'boolean',
+        ]);
+
+        $customer->update($validated);
+
+        return redirect()->route('customers.show', $customer)->with('success', 'تم تحديث بيانات العميل');
+    }
+
+    public function destroy(Customer $customer)
+    {
+        $customer->update(['is_active' => false]);
+        return redirect()->route('customers.index')->with('success', 'تم إيقاف العميل');
+    }
+
+    public function addCement(Request $request, Customer $customer)
+    {
+        $request->validate(['amount' => 'required|numeric|min:0.001', 'notes' => 'nullable|string']);
+
+        if (!$customer->isOperational()) {
+            return back()->with('error', 'هذا العميل ليس تشغيلياً');
+        }
+
+        $customer->addCement((float)$request->amount);
+
+        return back()->with('success', 'تم إضافة ' . number_format($request->amount, 0) . ' طن إلى رصيد الاسمنت');
+    }
+
+    public function payments(Customer $customer)
+    {
+        $payments = $customer->payments()->with('order')->latest()->paginate(20);
+        return view('customers.payments', compact('customer', 'payments'));
+    }
+}
