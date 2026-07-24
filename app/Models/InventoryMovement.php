@@ -21,6 +21,15 @@ class InventoryMovement extends Model
     public function item()       { return $this->belongsTo(InventoryItem::class, 'inventory_item_id'); }
     public function supplier()   { return $this->belongsTo(Supplier::class); }
     public function recordedBy() { return $this->belongsTo(User::class, 'recorded_by'); }
+    public function purchase()   { return $this->belongsTo(SupplierPurchase::class, 'reference_id'); }
+
+    public function getInvoiceNumberAttribute(): ?string
+    {
+        if ($this->reference_type === 'purchase' && $this->purchase) {
+            return $this->purchase->invoice_number ?? '#' . $this->purchase->id;
+        }
+        return null;
+    }
 
     public function getTypeLabelAttribute(): string
     {

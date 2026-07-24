@@ -46,7 +46,7 @@ class InventoryController extends Controller
     public function show(InventoryItem $inventory)
     {
         $movements = InventoryMovement::where('inventory_item_id', $inventory->id)
-            ->with('supplier')
+            ->with(['supplier', 'purchase'])
             ->latest('movement_date')
             ->paginate(25);
         return view('inventory.show', compact('inventory', 'movements'));
@@ -55,7 +55,7 @@ class InventoryController extends Controller
     public function movements(InventoryItem $item)
     {
         $movements = InventoryMovement::where('inventory_item_id', $item->id)
-            ->with('supplier')
+            ->with(['supplier', 'purchase'])
             ->latest('movement_date')
             ->paginate(30);
         return view('inventory.movements', compact('item', 'movements'));

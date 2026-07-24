@@ -22,7 +22,7 @@
         <table class="w-full text-sm">
             <thead>
                 <tr class="bg-slate-800/50 border-b border-slate-700">
-                    @foreach(['التاريخ','النوع','الكمية','الرصيد بعد','سعر الوحدة','المورد','ملاحظات'] as $h)
+                    @foreach(['التاريخ','رقم الفاتورة','النوع','الكمية','الرصيد بعد','سعر الوحدة','المورد','ملاحظات'] as $h)
                     <th class="px-4 py-3 text-right text-slate-400 font-medium">{{ $h }}</th>
                     @endforeach
                 </tr>
@@ -31,6 +31,18 @@
                 @forelse($movements as $m)
                 <tr class="table-row">
                     <td class="px-4 py-3 text-slate-300">{{ $m->movement_date->format('d/m/Y') }}</td>
+                    <td class="px-4 py-3 text-slate-300 font-mono text-xs whitespace-nowrap">
+                        @if($m->reference_type === 'purchase' && $m->purchase)
+                            <a href="{{ route('supplier-purchases.show', $m->purchase) }}" class="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1">
+                                <i class="fas fa-file-invoice text-slate-500 text-xs"></i>
+                                {{ $m->purchase->invoice_number ?? '#' . $m->purchase->id }}
+                            </a>
+                        @elseif($m->invoice_number)
+                            <span class="text-slate-300">{{ $m->invoice_number }}</span>
+                        @else
+                            <span class="text-slate-600">-</span>
+                        @endif
+                    </td>
                     <td class="px-4 py-3">
                         <span class="badge {{ $m->type==='in'?'badge-green':'badge-red' }}">
                             <i class="fas {{ $m->type==='in'?'fa-arrow-down':'fa-arrow-up' }} ml-1"></i>
@@ -46,7 +58,7 @@
                     <td class="px-4 py-3 text-slate-500 text-xs">{{ $m->notes ?? '-' }}</td>
                 </tr>
                 @empty
-                <tr><td colspan="7" class="px-4 py-12 text-center text-slate-500">
+                <tr><td colspan="8" class="px-4 py-12 text-center text-slate-500">
                     <i class="fas fa-history text-4xl mb-3 opacity-30"></i><br>لا توجد حركات مسجلة
                 </td></tr>
                 @endforelse
