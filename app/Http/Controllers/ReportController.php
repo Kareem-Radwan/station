@@ -169,6 +169,7 @@ class ReportController extends Controller
 
             // Filtered data for the selected period
             $purchases = $supplier->purchases()
+                ->with(['items.inventoryItem'])
                 ->whereBetween('purchase_date', [$fromDate, $toDate])
                 ->orderBy('purchase_date')
                 ->get();
@@ -250,35 +251,16 @@ class ReportController extends Controller
                 // Get stock items belonging to this invoice
                 $invoiceStock = $stockInGrouped->get($purchase->id, collect());
 
-                $stockDetails = '';
-
-                if ($invoiceStock->count()) {
-                    $stockDetails = '<br><small style="color:#94a3b8">';
-                    
-                    foreach ($invoiceStock as $stockIn) {
-                        $stockDetails .= 
-                            '↳ ' .
-                            ($stockIn->item->name_ar ?? '') .
-                            ' - ' .
-                            number_format($stockIn->quantity, 2) .
-                            ' ' .
-                            ($stockIn->item->unit ?? '') .
-                            '<br>';
-                    }
-
-                    $stockDetails .= '</small>';
-                }
-
                 $transactions->push((object)[
                     'date'            => $purchase->purchase_date,
-                    'description'     => 
-                        'مشتريات إذن ' . ($purchase->invoice_number ?? $purchase->id)
-                        . $stockDetails,
+                    'description'     => 'مشتريات إذن ' . ($purchase->invoice_number ?? $purchase->id),
                     'debit'           => $purchase->cash_amount,
                     'credit'          => $purchase->total_amount,
                     'running_balance' => $runningBalance,
                     'tx_type'         => 'purchase',
-                    'has_stock'       => $invoiceStock->count() > 0,
+                    'purchase_items'  => $purchase->items,
+                    'invoice_stock'   => $invoiceStock,
+                    'has_stock'       => $invoiceStock->count() > 0 || ($purchase->items && $purchase->items->count() > 0),
                 ]);
             }
 

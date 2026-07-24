@@ -1,4 +1,4 @@
-﻿@extends('layouts.app')
+@extends('layouts.app')
 @section('title', 'تقرير كشف حساب مورد')
 @section('content')
 
@@ -150,6 +150,37 @@
                     <td class="px-4 py-3 text-slate-300 whitespace-nowrap">{{ \Carbon\Carbon::parse($t->date)->format('d/m/Y') }}</td>
                     <td class="px-4 py-3 text-white">
                         {!! $t->description !!}
+                        @if(isset($t->tx_type) && $t->tx_type === 'purchase')
+                            @if(isset($t->purchase_items) && count($t->purchase_items))
+                                <div class="mt-2 text-xs bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/60 space-y-1.5">
+                                    <div class="font-semibold text-slate-400 border-b border-slate-700/50 pb-1 flex items-center justify-between">
+                                        <span><i class="fas fa-boxes text-amber-400 ml-1"></i>تفاصيل المشتريات:</span>
+                                        <span class="text-[11px] text-slate-400">{{ count($t->purchase_items) }} بند</span>
+                                    </div>
+                                    @foreach($t->purchase_items as $item)
+                                        <div class="flex items-center justify-between gap-3 text-slate-300 py-0.5 border-b border-slate-800/40 last:border-0">
+                                            <span class="font-medium text-slate-200">
+                                                ↳ {{ $item->inventoryItem?->name_ar ?? $item->description }}
+                                                @if($item->inventoryItem && $item->description && $item->description !== $item->inventoryItem->name_ar)
+                                                    <span class="text-slate-400 text-[11px]">({{ $item->description }})</span>
+                                                @endif
+                                            </span>
+                                            <span class="font-mono text-slate-300 text-[11px]">
+                                                {{ number_format($item->quantity, 2) }} {{ $item->unit }}
+                                                <span class="text-slate-500">×</span> {{ number_format($item->unit_price, 2) }}
+                                                <span class="text-slate-500">=</span> <strong class="text-amber-400">{{ number_format($item->total_price, 2) }}</strong>
+                                            </span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @elseif(isset($t->invoice_stock) && count($t->invoice_stock))
+                                <div class="mt-2 text-xs text-slate-400 bg-slate-800/40 p-2 rounded-lg border border-slate-700/40 space-y-1">
+                                    @foreach($t->invoice_stock as $stockIn)
+                                        <div>↳ {{ $stockIn->item->name_ar ?? '' }} - {{ number_format($stockIn->quantity, 2) }} {{ $stockIn->item->unit ?? '' }}</div>
+                                    @endforeach
+                                </div>
+                            @endif
+                        @endif
                         @if(isset($t->shift_details))
                             <div class="text-xs text-slate-400 mt-1">
                                 <span>ساعات: {{ $t->shift_details->hours }}</span>

@@ -46,6 +46,7 @@ class SupplierBalanceExport implements FromCollection, WithHeadings, WithStyles,
              */
 
             $purchases = $supplier->purchases()
+                ->with(['items.inventoryItem'])
                 ->whereBetween('purchase_date', [$fromDate, $toDate])
                 ->orderBy('purchase_date')
                 ->get();
@@ -188,17 +189,22 @@ class SupplierBalanceExport implements FromCollection, WithHeadings, WithStyles,
 
                 $details = "";
 
-
-                foreach($invoiceStock as $stock){
-
-                    $details .=
-                        " | "
-                        .$stock->item->name_ar
-                        ." "
-                        .number_format($stock->quantity,2)
-                        ." "
-                        .$stock->item->unit;
-
+                if ($purchase->items && $purchase->items->count() > 0) {
+                    $itemLines = [];
+                    foreach ($purchase->items as $item) {
+                        $name = $item->inventoryItem?->name_ar ?? $item->description;
+                        if ($item->inventoryItem && $item->description && $item->description !== $item->inventoryItem->name_ar) {
+                            $name .= " (" . $item->description . ")";
+                        }
+                        $itemLines[] = "  • " . $name . " - " . number_format($item->quantity, 2) . " " . $item->unit . " × " . number_format($item->unit_price, 2) . " = " . number_format($item->total_price, 2);
+                    }
+                    $details = "\nتفاصيل المشتريات:\n" . implode("\n", $itemLines);
+                } elseif ($invoiceStock->count() > 0) {
+                    $itemLines = [];
+                    foreach ($invoiceStock as $stock) {
+                        $itemLines[] = "  • " . ($stock->item->name_ar ?? '') . " - " . number_format($stock->quantity, 2) . " " . ($stock->item->unit ?? '');
+                    }
+                    $details = "\nتفاصيل المشتريات:\n" . implode("\n", $itemLines);
                 }
 
 
@@ -608,6 +614,8 @@ class SupplierBalanceExport implements FromCollection, WithHeadings, WithStyles,
     {
 
         $sheet->setRightToLeft(true);
+        $sheet->getStyle('B:B')->getAlignment()->setWrapText(true);
+        $sheet->getStyle('A:F')->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
 
 
         foreach(range('A','F') as $col){
