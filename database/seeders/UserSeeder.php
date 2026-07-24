@@ -34,5 +34,16 @@ class UserSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+
+        // Rental
+        User::firstOrCreate(
+            ['email' => 'Alaa@newsolidup.com'],
+            [
+                'name' => 'Alaa - Rentals',
+                'password' => Hash::make('ren2026!newsolidup'),
+                'role' => 'rental',
+                'is_active' => true,
+            ]
+        );
     }
 }

@@ -221,12 +221,29 @@
         <aside id="sidebar" class="sidebar w-64 min-h-full p-4 flex-shrink-0 transition-all duration-300 shadow-2xl">
             @php
                 $current = request()->route()?->getName() ?? '';
-                $isInventoryManager = auth()->user()->role === 'inventory_manager';
+                $userRole = auth()->user()->role;
+                $isInventoryManager = $userRole === 'inventory_manager';
+                $isRental = $userRole === 'rental';
             @endphp
 
             <nav class="space-y-0.5">
 
-                @if ($isInventoryManager)
+                @if ($isRental)
+
+                    {{-- Rental / Equipment Officer Menu --}}
+                    <div class="text-xs text-slate-500 px-3 py-2 uppercase tracking-wider mt-2">
+                        المعدات
+                    </div>
+
+                    @foreach ([['المعدات المملوكة', 'fa-cog', 'equipment'], ['المعدات المستأجرة', 'fa-tools', 'rentals'], ['مخزون المعدات', 'fa-toolbox', 'equipment-tools']] as [$name, $icon, $route])
+                        <a href="{{ route($route . '.index') }}"
+                            class="sidebar-link {{ request()->routeIs($route . '.*') ? 'active' : '' }} flex items-center gap-3 px-3 py-2.5 text-slate-300 text-sm">
+                            <i class="fas {{ $icon }} w-4 text-center opacity-70"></i>
+                            <span>{{ $name }}</span>
+                        </a>
+                    @endforeach
+
+                @elseif ($isInventoryManager)
 
                     {{-- Inventory Manager Menu --}}
                     <div class="text-xs text-slate-500 px-3 py-2 uppercase tracking-wider mt-2">

@@ -24,6 +24,7 @@ class User extends Authenticatable
     public function isEngineer(): bool     { return $this->role === 'engineer'; }
     public function isInventoryOfficer(): bool { return $this->role === 'inventory_officer'; }
     public function isInventoryManager(): bool { return $this->role === 'inventory_manager'; }
+    public function isRental(): bool           { return $this->role === 'rental'; }
 
     public function hasRole(string ...$roles): bool
     {
@@ -40,6 +41,7 @@ class User extends Authenticatable
             'engineer'           => 'مهندس',
             'inventory_officer'  => 'مسؤول المخزن',
             'inventory_manager'  => 'مدير المخزون',
+            'rental'             => 'مسؤول المعدات والتأجير',
             default              => $role,
         };
     }

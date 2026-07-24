@@ -43,7 +43,6 @@ Route::middleware('auth')->group(function () {
     // ─── Dashboard ────────────────────────────────────────────────────────────────
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard')->middleware('role:accountant,admin');
 
-
     // ─── Customers ────────────────────────────────────────────────────────────────
     Route::resource('customers', CustomerController::class);
     Route::post('customers/{customer}/add-cement', [CustomerController::class, 'addCement'])->name('customers.add-cement');
@@ -87,8 +86,10 @@ Route::middleware('auth')->group(function () {
         Route::post('inventory/{item}/update-price', [InventoryController::class, 'updatePrice'])->name('inventory.update-price.store');
         Route::get('inventory/{item}/movements', [InventoryController::class, 'movements'])->name('inventory.movements');
         Route::resource('inventory', InventoryController::class)->only(['index', 'show']);
-        
-        // ─── Equipment Tools Inventory (accessible to inventory_manager too) ──────────
+    });
+
+    // ─── Equipment Tools Inventory (accessible to inventory_manager, accountant, admin, and rental) ──
+    Route::middleware('role:inventory_manager,accountant,admin,rental')->group(function () {
         Route::get('equipment-tools', [\App\Http\Controllers\EquipmentToolController::class, 'index'])->name('equipment-tools.index');
         Route::get('equipment-tools/create', [\App\Http\Controllers\EquipmentToolController::class, 'create'])->name('equipment-tools.create');
         Route::post('equipment-tools', [\App\Http\Controllers\EquipmentToolController::class, 'store'])->name('equipment-tools.store');
@@ -97,6 +98,20 @@ Route::middleware('auth')->group(function () {
         Route::post('equipment-tools/{equipmentTool}/stock-in', [\App\Http\Controllers\EquipmentToolController::class, 'stockIn'])->name('equipment-tools.stock-in.store');
         Route::get('equipment-tools/{equipmentTool}/stock-out', [\App\Http\Controllers\EquipmentToolController::class, 'stockOutForm'])->name('equipment-tools.stock-out');
         Route::post('equipment-tools/{equipmentTool}/stock-out', [\App\Http\Controllers\EquipmentToolController::class, 'stockOut'])->name('equipment-tools.stock-out.store');
+    });
+
+    // ─── Equipment & Rentals (accessible to accountant, admin, and rental) ──────────
+    Route::middleware('role:accountant,admin,rental')->group(function () {
+        // ─── Equipment ────────────────────────────────────────────────────────────────
+        Route::resource('equipment', EquipmentController::class);
+        Route::resource('equipment.fuel-logs', EquipmentFuelLogController::class)->shallow();
+        Route::resource('equipment.maintenance', EquipmentMaintenanceController::class)->shallow();
+
+        // ─── Rentals ──────────────────────────────────────────────────────────────
+        Route::resource('rentals', RentalContractController::class);
+        Route::resource('rentals.maintenance', RentalMaintenanceController::class)->shallow();
+        Route::post('rentals/{rental}/shifts', [RentalShiftController::class, 'store'])->name('rentals.shifts.store');
+        Route::delete('rental-shifts/{shift}', [RentalShiftController::class, 'destroy'])->name('rentals.shifts.destroy');
     });
 
     // ─── Accountant Only Routes ──────────────────────────────────────────────────
@@ -114,17 +129,6 @@ Route::middleware('auth')->group(function () {
         Route::put('neighboring-stations/{neighboringStation}/transactions/{transaction}', [NeighboringStationController::class, 'updateTransaction'])->name('neighboring-stations.update-transaction');
         Route::delete('neighboring-stations/{neighboringStation}/transactions/{transaction}', [NeighboringStationController::class, 'destroyTransaction'])->name('neighboring-stations.destroy-transaction');
         Route::post('neighboring-stations/{neighboringStation}/transactions/{transaction}/payment', [NeighboringStationController::class, 'recordPayment'])->name('neighboring-stations.record-payment');
-
-        // ─── Equipment ────────────────────────────────────────────────────────────────
-        Route::resource('equipment', EquipmentController::class);
-        Route::resource('equipment.fuel-logs', EquipmentFuelLogController::class)->shallow();
-        Route::resource('equipment.maintenance', EquipmentMaintenanceController::class)->shallow();
-
-        // ─── Rentals ──────────────────────────────────────────────────────────────
-        Route::resource('rentals', RentalContractController::class);
-        Route::resource('rentals.maintenance', RentalMaintenanceController::class)->shallow();
-        Route::post('rentals/{rental}/shifts', [RentalShiftController::class, 'store'])->name('rentals.shifts.store');
-        Route::delete('rental-shifts/{shift}', [RentalShiftController::class, 'destroy'])->name('rentals.shifts.destroy');
 
         // ─── Employees ────────────────────────────────────────────────────────────────
         Route::resource('employees', EmployeeController::class);

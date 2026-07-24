@@ -48,6 +48,10 @@ class AuthController extends Controller
         if ($user->isInventoryManager()) {
             return redirect()->route('inventory.index');
         }
+
+        if ($user->isRental()) {
+            return redirect()->route('equipment.index');
+        }
         
         return redirect()->route('dashboard');
     }
