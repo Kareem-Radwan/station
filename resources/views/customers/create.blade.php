@@ -81,7 +81,7 @@
                 </div>
                 <div>
                     <label class="block text-slate-400 text-sm mb-1.5">رصيد الاسمنت الأولي (طن)</label>
-                    <input type="number" step="0.001" name="cement_balance" value="{{ old('cement_balance', 0) }}"
+                    <input type="number" step="0.001" name="cement_balance" placeholder="{{ old('cement_balance', 0) }}"
                         class="input-field w-full px-3 py-2.5 text-sm">
                 </div>
             </div>
