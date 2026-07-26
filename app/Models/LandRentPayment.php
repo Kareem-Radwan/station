@@ -15,4 +15,14 @@ class LandRentPayment extends Model
 
     public function landRent()   { return $this->belongsTo(LandRent::class); }
     public function recordedBy() { return $this->belongsTo(User::class, 'recorded_by'); }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when a land rent payment is deleted
+        static::deleting(function ($payment) {
+            TreasuryTransaction::where('reference_type', 'land_rent_payment')
+                ->where('reference_id', $payment->id)
+                ->delete();
+        });
+    }
 }

@@ -56,6 +56,13 @@ class ReportController extends Controller
                 ->orderBy('payment_date')
                 ->get();
 
+            // Direct treasury transactions for customer (not linked through customer_payment)
+            $directTreasuryTxs = \App\Models\TreasuryTransaction::where('reference_type', 'customer')
+                ->where('reference_id', $customer->id)
+                ->whereBetween('transaction_date', [$fromDate, $toDate])
+                ->orderBy('transaction_date')
+                ->get();
+
             // Get paid credits for this customer in the period
             $paidCredits = \App\Models\Credit::where('creditable_type', 'customer')
                 ->where('creditable_id', $customer->id)
@@ -64,82 +71,155 @@ class ReportController extends Controller
                 ->orderBy('paid_date')
                 ->get();
 
-            // Summary totals for the filtered period
+            // Calculate totals
             $totalOrders = $orders->sum('total_amount');
-            $totalCashOrders = $orders->sum('cash_amount');  // Cash paid during orders
-            $totalCreditPayments = $paidCredits->sum('amount');  // Paid credits
-            $totalPayments = $payments->sum('amount') + $totalCashOrders + $totalCreditPayments;  // Include cash and credit payments
-            // The actual credit balance is: total - cash (what remains to be paid)
-            $filteredBalance = $totalOrders - $totalCashOrders - $payments->sum('amount') - $totalCreditPayments;
+            $totalCashOrders = $orders->sum('cash_amount');
+            $totalCreditPayments = $paidCredits->sum('amount');
+            
+            $incomingPaymentsSum = $payments->where('amount', '>', 0)->sum('amount') 
+                                 + $directTreasuryTxs->where('type', 'in')->sum('amount') 
+                                 + $totalCreditPayments;
+                                 
+            $outgoingPaymentsSum = abs($payments->where('amount', '<', 0)->sum('amount')) 
+                                 + $directTreasuryTxs->where('type', 'out')->sum('amount');
 
-            $transactions = collect();
-            $runningBalance = 0;
-            $runningCementBalance = (float)$customer->cement_balance;
-            // Compute starting cement balance before period (add back what was deducted in period)
-            $cementDeductedInPeriod = $orders->sum('cement_deducted');
-            $cementBalanceStart = $runningCementBalance + $cementDeductedInPeriod;
-            $runningCementBalance = $cementBalanceStart;
+            $totalPayments = $incomingPaymentsSum + $totalCashOrders;
+            $filteredBalance = ($totalOrders - $totalCashOrders) + $outgoingPaymentsSum - $incomingPaymentsSum;
+
+            // Build chronological event list
+            $events = collect();
 
             foreach ($orders as $order) {
-                // The credit amount is total minus cash paid immediately
-                $creditAmount = ($order->total_amount ?? 0) - ($order->cash_amount ?? 0);
-                $runningBalance += $creditAmount;  // Add only the credit portion
-                $cementDeducted = (float)($order->cement_deducted ?? 0);
-                $runningCementBalance -= $cementDeducted;
-                $transactions->push((object)[
-                    'date'                 => $order->delivery_date,
-                    'description'          => 'طلب #' . $order->id . ' - ' . ($order->concrete_mix?->name ?? $order->concrete_type_label),
-                    'debit'                => $order->total_amount ?? 0,
-                    'cash_paid'            => $order->cash_amount ?? 0,
-                    'order_price'          => $creditAmount,
-                    'credit'               => 0,
-                    'running_balance'      => $runningBalance,
-                    'quantity_m3'          => (float)($order->quantity_m3 ?? 0),
-                    'unit_price'           => (float)($order->unit_price ?? 0),
-                    'cement_deducted'      => $cementDeducted,
-                    'running_cement'       => $runningCementBalance,
-                    'type'                 => 'order',
+                $events->push((object)[
+                    'date'            => $order->delivery_date,
+                    'type'            => 'order',
+                    'model'           => $order,
+                    'description'     => 'طلب #' . $order->id . ' - ' . ($order->concrete_mix?->name ?? $order->concrete_type_label),
+                    'total_amount'    => (float)($order->total_amount ?? 0),
+                    'cash_amount'     => (float)($order->cash_amount ?? 0),
+                    'quantity_m3'     => (float)($order->quantity_m3 ?? 0),
+                    'unit_price'      => (float)($order->unit_price ?? 0),
+                    'cement_deducted' => (float)($order->cement_deducted ?? 0),
                 ]);
             }
 
             foreach ($payments as $payment) {
-                $runningBalance -= $payment->amount;
-                $transactions->push((object)[
-                    'date'            => $payment->payment_date,
-                    'description'     => 'دفعة ' . $payment->payment_method,
-                    'debit'           => 0,
-                    'cash_paid'       => 0,
-                    'order_price'     => 0,
-                    'credit'          => $payment->amount,
-                    'running_balance' => $runningBalance,
-                    'quantity_m3'     => 0,
-                    'unit_price'      => 0,
-                    'cement_deducted' => 0,
-                    'running_cement'  => $runningCementBalance,
-                    'type'            => 'payment',
-                ]);
+                $amt = (float)$payment->amount;
+                if ($amt < 0) {
+                    $events->push((object)[
+                        'date'            => $payment->payment_date,
+                        'type'            => 'outgoing_payment',
+                        'model'           => $payment,
+                        'description'     => 'سداد ديون (صادر) - ' . ($payment->notes ?: $payment->payment_method),
+                        'amount'          => abs($amt),
+                    ]);
+                } else {
+                    $events->push((object)[
+                        'date'            => $payment->payment_date,
+                        'type'            => 'payment',
+                        'model'           => $payment,
+                        'description'     => $payment->notes ?: ('دفعة ' . $payment->payment_method),
+                        'amount'          => $amt,
+                    ]);
+                }
             }
 
-            // Add paid credits as payment transactions
+            foreach ($directTreasuryTxs as $tx) {
+                if ($tx->type === 'out') {
+                    $events->push((object)[
+                        'date'            => $tx->transaction_date,
+                        'type'            => 'outgoing_payment',
+                        'model'           => $tx,
+                        'description'     => '' . ($tx->description ?: 'سداد ديون'),
+                        'amount'          => (float)$tx->amount,
+                    ]);
+                } else {
+                    $events->push((object)[
+                        'date'            => $tx->transaction_date,
+                        'type'            => 'payment',
+                        'model'           => $tx,
+                        'description'     => '' . ($tx->description ?: 'دفعة عميل'),
+                        'amount'          => (float)$tx->amount,
+                    ]);
+                }
+            }
+
             foreach ($paidCredits as $paidCredit) {
-                $runningBalance -= $paidCredit->amount;
-                $transactions->push((object)[
+                $events->push((object)[
                     'date'            => $paidCredit->paid_date,
-                    'description'     => 'سداد آجل - ' . ($paidCredit->notes ?? 'دفعة آجلة'),
-                    'debit'           => 0,
-                    'cash_paid'       => 0,
-                    'order_price'     => 0,
-                    'credit'          => $paidCredit->amount,
-                    'running_balance' => $runningBalance,
-                    'quantity_m3'     => 0,
-                    'unit_price'      => 0,
-                    'cement_deducted' => 0,
-                    'running_cement'  => $runningCementBalance,
                     'type'            => 'credit_payment',
+                    'model'           => $paidCredit,
+                    'description'     => 'سداد آجل - ' . ($paidCredit->notes ?? 'دفعة آجلة'),
+                    'amount'          => (float)$paidCredit->amount,
                 ]);
             }
 
-            $transactions = $transactions->sortBy('date')->values();
+            // Sort chronologically
+            $sortedEvents = $events->sortBy(fn($e) => \Carbon\Carbon::parse($e->date)->timestamp)->values();
+
+            // Compute running balance
+            $transactions = collect();
+            $runningBalance = 0;
+            $runningCementBalance = (float)$customer->cement_balance + $orders->sum('cement_deducted');
+            $cementBalanceStart = $runningCementBalance;
+
+            foreach ($sortedEvents as $ev) {
+                if ($ev->type === 'order') {
+                    $creditAmount = $ev->total_amount - $ev->cash_amount;
+                    $runningBalance += $creditAmount;
+                    $runningCementBalance -= $ev->cement_deducted;
+
+                    $transactions->push((object)[
+                        'date'            => $ev->date,
+                        'description'     => $ev->description,
+                        'debit'           => $ev->total_amount,
+                        'cash_paid'       => $ev->cash_amount,
+                        'order_price'     => $creditAmount,
+                        'credit'          => 0,
+                        'running_balance' => $runningBalance,
+                        'quantity_m3'     => $ev->quantity_m3,
+                        'unit_price'      => $ev->unit_price,
+                        'cement_deducted' => $ev->cement_deducted,
+                        'running_cement'  => $runningCementBalance,
+                        'type'            => 'order',
+                    ]);
+                } elseif ($ev->type === 'outgoing_payment') {
+                    $runningBalance += $ev->amount;
+
+                    $transactions->push((object)[
+                        'date'            => $ev->date,
+                        'description'     => $ev->description,
+                        'debit'           => $ev->amount,
+                        'cash_paid'       => 0,
+                        'order_price'     => $ev->amount,
+                        'credit'          => 0,
+                        'running_balance' => $runningBalance,
+                        'quantity_m3'     => 0,
+                        'unit_price'      => 0,
+                        'cement_deducted' => 0,
+                        'running_cement'  => $runningCementBalance,
+                        'type'            => 'outgoing_payment',
+                    ]);
+                } else { // payment or credit_payment
+                    $runningBalance -= $ev->amount;
+
+                    $transactions->push((object)[
+                        'date'            => $ev->date,
+                        'description'     => $ev->description,
+                        'debit'           => 0,
+                        'cash_paid'       => 0,
+                        'order_price'     => 0,
+                        'credit'          => $ev->amount,
+                        'running_balance' => $runningBalance,
+                        'quantity_m3'     => 0,
+                        'unit_price'      => 0,
+                        'cement_deducted' => 0,
+                        'running_cement'  => $runningCementBalance,
+                        'type'            => $ev->type,
+                    ]);
+                }
+            }
+
             $totalQuantityM3 = $orders->sum('quantity_m3');
             $totalCementDeducted = $orders->sum('cement_deducted');
 

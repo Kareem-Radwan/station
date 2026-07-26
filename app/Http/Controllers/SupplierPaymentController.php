@@ -60,6 +60,61 @@ class SupplierPaymentController extends Controller
         return redirect()->route('supplier-payments.index')->with('success', $message);
     }
 
+    public function edit(SupplierPayment $supplierPayment)
+    {
+        $suppliers = Supplier::active()->orderBy('name')->get();
+        return view('supplier-payments.edit', compact('supplierPayment', 'suppliers'));
+    }
+
+    public function update(Request $request, SupplierPayment $supplierPayment)
+    {
+        $request->validate([
+            'payment_date'   => 'required|date',
+            'amount'         => 'required|numeric|min:0.01',
+            'payment_method' => 'required|in:cash,bank_transfer,check',
+            'payment_type'   => 'required|in:payment,deduction',
+            'notes'          => 'nullable|string',
+        ]);
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($request, $supplierPayment) {
+            $oldAmount = $supplierPayment->amount;
+            $oldType = $supplierPayment->payment_type;
+            
+            // Revert old balance effect
+            if ($oldType === 'payment') {
+                $supplierPayment->supplier->increment('balance', $oldAmount);
+            } else {
+                $supplierPayment->supplier->decrement('balance', $oldAmount);
+            }
+            
+            // Update payment
+            $supplierPayment->update($request->only(['payment_date', 'amount', 'payment_method', 'payment_type', 'notes']));
+            
+            // Apply new balance effect
+            if ($request->payment_type === 'payment') {
+                $supplierPayment->supplier->decrement('balance', $request->amount);
+                
+                // Update treasury transaction
+                $treasuryTx = \App\Models\TreasuryTransaction::where('reference_type', 'supplier_payment')
+                    ->where('reference_id', $supplierPayment->id)
+                    ->first();
+                    
+                if ($treasuryTx) {
+                    $treasuryTx->update([
+                        'amount' => $request->amount,
+                        'transaction_date' => $request->payment_date,
+                    ]);
+                    $this->treasuryService->recalculateBalances();
+                }
+            } else {
+                $supplierPayment->supplier->increment('balance', $request->amount);
+            }
+        });
+
+        $message = $request->payment_type === 'deduction' ? 'تم تحديث الخصم بنجاح' : 'تم تحديث الدفعة بنجاح';
+        return redirect()->route('supplier-payments.index')->with('success', $message);
+    }
+
     public function destroy(SupplierPayment $supplierPayment)
     {
         \Illuminate\Support\Facades\DB::transaction(function () use ($supplierPayment) {

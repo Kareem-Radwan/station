@@ -88,9 +88,18 @@
                     </td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-1">
-                            <a href="{{ route('orders.show', $order) }}" class="text-blue-400 hover:text-blue-300 px-2 py-1 border border-blue-400/30 rounded text-xs transition">
+                            <a href="{{ route('orders.show', $order) }}" class="text-blue-400 hover:text-blue-300 px-2 py-1 border border-blue-400/30 rounded text-xs transition" title="عرض">
                                 <i class="fas fa-eye"></i>
                             </a>
+                            <a href="{{ route('orders.edit', $order) }}" class="text-amber-400 hover:text-amber-300 px-2 py-1 border border-amber-400/30 rounded text-xs transition" title="تعديل">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form action="{{ route('orders.destroy', $order) }}" method="POST" class="inline" onsubmit="return confirm('هل أنت متأكد من حذف هذا الطلب؟ سيتم حذف جميع تكاليف المواد والحركات المرتبطة من الخزينة والمخزون')">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="text-red-400 hover:text-red-300 px-2 py-1 border border-red-400/30 rounded text-xs transition" title="حذف">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
                             @if($order->status === 'pending')
                             <form action="{{ route('orders.update-status', $order) }}" method="POST" class="inline">
                                 @csrf @method('PATCH')

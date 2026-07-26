@@ -63,7 +63,7 @@
         <table class="w-full text-sm">
             <thead>
                 <tr class="bg-slate-800/50 border-b border-slate-700">
-                    @foreach(['التاريخ','النوع','الفئة','الوصف','المبلغ','الرصيد بعد'] as $h)
+                    @foreach(['التاريخ','النوع','الفئة','الوصف','المبلغ','الرصيد بعد','إجراءات'] as $h)
                     <th class="px-4 py-3 text-right text-slate-400 font-medium">{{ $h }}</th>
                     @endforeach
                 </tr>
@@ -81,9 +81,24 @@
                         {{ $tx->type==='in' ? '+' : '-' }}{{ number_format($tx->amount, 2) }}
                     </td>
                     <td class="px-4 py-3 text-amber-400 font-medium">{{ number_format($tx->balance_after, 2) }}</td>
+                    <td class="px-4 py-3">
+                        <div class="flex gap-2 justify-end">
+                            <a href="{{ route('treasury.edit', $tx) }}" class="text-blue-400 hover:text-blue-300" title="تعديل">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form method="POST" action="{{ route('treasury.destroy', $tx) }}" class="inline" 
+                                  onsubmit="return confirm('هل أنت متأكد من حذف هذه الحركة؟ سيتم حذف السجلات المرتبطة أيضاً')">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="text-red-400 hover:text-red-300" title="حذف">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
                 </tr>
                 @empty
-                <tr><td colspan="6" class="px-4 py-12 text-center text-slate-500">لا توجد حركات</td></tr>
+                <tr><td colspan="7" class="px-4 py-12 text-center text-slate-500">لا توجد حركات</td></tr>
                 @endforelse
             </tbody>
         </table>

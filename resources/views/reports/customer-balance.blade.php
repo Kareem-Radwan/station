@@ -1,4 +1,4 @@
-﻿@extends('layouts.app')
+@extends('layouts.app')
 @section('title', 'تقرير كشف حساب عميل')
 @section('content')
 
@@ -175,10 +175,15 @@
                     <tbody class="divide-y divide-slate-800">
                         @forelse($transactions as $t)
                             <tr
-                                class="hover:bg-slate-800/30 transition {{ ($t->type ?? '') === 'payment' ? 'bg-green-900/5' : '' }}">
+                                class="hover:bg-slate-800/30 transition {{ ($t->type ?? '') === 'payment' ? 'bg-green-900/5' : (($t->type ?? '') === 'outgoing_payment' ? 'bg-red-900/10' : '') }}">
                                 <td class="px-3 py-3 text-slate-300 whitespace-nowrap">
                                     {{ \Carbon\Carbon::parse($t->date)->format('d/m/Y') }}</td>
-                                <td class="px-3 py-3 text-white">{{ $t->description }}</td>
+                                <td class="px-3 py-3 text-white">
+                                    @if(($t->type ?? '') === 'outgoing_payment')
+                                        <span class="badge badge-red text-xs ml-1">صادر</span>
+                                    @endif
+                                    {{ $t->description }}
+                                </td>
                                 <td class="px-3 py-3 text-center text-blue-400">
                                     {{ $t->quantity_m3 > 0 ? number_format($t->quantity_m3, 2) : '-' }}</td>
                                 <td class="px-3 py-3 text-center text-purple-400">

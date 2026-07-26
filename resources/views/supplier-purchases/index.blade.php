@@ -60,7 +60,14 @@
                         </span>
                     </td>
                     <td class="px-4 py-3">
-                        <a href="{{ route('supplier-purchases.show',$p) }}" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 border border-blue-400/30 rounded"><i class="fas fa-eye"></i></a>
+                        <div class="flex gap-2">
+                            <a href="{{ route('supplier-purchases.show',$p) }}" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 border border-blue-400/30 rounded" title="عرض"><i class="fas fa-eye"></i></a>
+                            <a href="{{ route('supplier-purchases.edit',$p) }}" class="text-amber-400 hover:text-amber-300 text-xs px-2 py-1 border border-amber-400/30 rounded" title="تعديل"><i class="fas fa-edit"></i></a>
+                            <form action="{{ route('supplier-purchases.destroy',$p) }}" method="POST" class="inline" onsubmit="return confirm('حذف الفاتورة؟ سيتم حذف جميع الحركات المرتبطة بها في الخزينة والمخزون')">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 border border-red-400/30 rounded" title="حذف"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 @empty

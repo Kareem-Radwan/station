@@ -75,16 +75,26 @@ class ReportService
                     ->whereBetween('delivery_date', [$fromDate, $toDate]));
             })
             ->get()
-            ->map(fn($c) => [
-                'customer'          => $c,
-                'order_count'       => $c->orders->count(),
-                'total_orders'      => (float)$c->orders->sum('total_amount'),
-                'total_payments'    => (float)$c->payments->sum('amount'),
-                'total_cash'        => (float)$c->orders->sum('cash_amount'),
-                'outstanding'       => (float)$c->orders->sum('total_amount') - (float)$c->orders->sum('cash_amount') - (float)$c->payments->sum('amount'),
-                'cement_balance'    => (float)$c->cement_balance,
-                'total_concrete_m3' => (float)$c->orders->sum('quantity_m3'),
-            ]);
+            ->map(function($c) {
+                $incomingPayments = (float)$c->payments->where('amount', '>', 0)->sum('amount')
+                                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $c->id)->where('type', 'in')->sum('amount');
+                $outgoingPayments = abs((float)$c->payments->where('amount', '<', 0)->sum('amount'))
+                                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $c->id)->where('type', 'out')->sum('amount');
+                $totalOrders = (float)$c->orders->sum('total_amount');
+                $totalCash   = (float)$c->orders->sum('cash_amount');
+                $outstanding = ($totalOrders - $totalCash) + $outgoingPayments - $incomingPayments;
+
+                return [
+                    'customer'          => $c,
+                    'order_count'       => $c->orders->count(),
+                    'total_orders'      => $totalOrders,
+                    'total_payments'    => $incomingPayments + $totalCash,
+                    'total_cash'        => $totalCash,
+                    'outstanding'       => $outstanding,
+                    'cement_balance'    => (float)$c->cement_balance,
+                    'total_concrete_m3' => (float)$c->orders->sum('quantity_m3'),
+                ];
+            });
     }
 
     public function supplierBalanceReport(?string $fromDate, ?string $toDate): \Illuminate\Support\Collection

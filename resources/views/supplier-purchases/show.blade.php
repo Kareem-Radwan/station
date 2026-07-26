@@ -28,6 +28,17 @@
                 class="btn-accent text-slate-900 font-bold px-4 py-2 rounded-lg text-sm">
                 <i class="fas fa-hand-holding-usd"></i> تسجيل دفعة
             </a>
+            <a href="{{ route('supplier-purchases.edit', $supplierPurchase) }}"
+                class="btn-primary text-white px-4 py-2 rounded-lg text-sm">
+                <i class="fas fa-edit"></i> تعديل
+            </a>
+            <form action="{{ route('supplier-purchases.destroy', $supplierPurchase) }}" method="POST" class="inline"
+                  onsubmit="return confirm('هل أنت متأكد من حذف هذه الفاتورة؟ سيتم حذف جميع الحركات المرتبطة بها في الخزينة والمخزون')">
+                @csrf @method('DELETE')
+                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm">
+                    <i class="fas fa-trash"></i> حذف
+                </button>
+            </form>
         </div>
     </div>
 

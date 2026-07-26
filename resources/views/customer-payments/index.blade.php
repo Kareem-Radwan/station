@@ -14,7 +14,7 @@
         <table class="w-full text-sm">
             <thead>
                 <tr class="bg-slate-800/50 border-b border-slate-700">
-                    @foreach(['#','العميل','التاريخ','المبلغ','طريقة الدفع','الطلب المرتبط','ملاحظات','حذف'] as $h)
+                    @foreach(['#','العميل','التاريخ','المبلغ','طريقة الدفع','الطلب المرتبط','ملاحظات','إجراءات'] as $h)
                     <th class="px-4 py-3 text-right text-slate-400 font-medium">{{ $h }}</th>
                     @endforeach
                 </tr>
@@ -34,10 +34,17 @@
                     </td>
                     <td class="px-4 py-3 text-slate-400">{{ $p->notes ?? '-' }}</td>
                     <td class="px-4 py-3">
-                        <form action="{{ route('customer-payments.destroy',$p) }}" method="POST" onsubmit="return confirm('حذف الدفعة؟')">
-                            @csrf @method('DELETE')
-                            <button type="submit" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 border border-red-400/30 rounded"><i class="fas fa-trash"></i></button>
-                        </form>
+                        <div class="flex gap-2">
+                            <a href="{{ route('customer-payments.edit',$p) }}" class="text-blue-400 hover:text-blue-300" title="تعديل">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form action="{{ route('customer-payments.destroy',$p) }}" method="POST" class="inline" onsubmit="return confirm('حذف الدفعة؟ سيتم حذف الحركة من الخزينة أيضاً')">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="text-red-400 hover:text-red-300" title="حذف">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 @empty

@@ -51,4 +51,14 @@ class EmployeeBorrow extends Model
     {
         return (float)$this->amount - (float)$this->remaining_amount;
     }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when an employee borrow is deleted
+        static::deleting(function ($borrow) {
+            TreasuryTransaction::where('reference_type', EmployeeBorrow::class)
+                ->where('reference_id', $borrow->id)
+                ->delete();
+        });
+    }
 }

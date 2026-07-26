@@ -16,4 +16,14 @@ class SupplierPayment extends Model
     public function supplier()         { return $this->belongsTo(Supplier::class); }
     public function purchase()         { return $this->belongsTo(SupplierPurchase::class, 'supplier_purchase_id'); }
     public function recordedBy()       { return $this->belongsTo(User::class, 'recorded_by'); }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when a supplier payment is deleted
+        static::deleting(function ($payment) {
+            TreasuryTransaction::where('reference_type', 'supplier_payment')
+                ->where('reference_id', $payment->id)
+                ->delete();
+        });
+    }
 }

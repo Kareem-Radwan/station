@@ -49,6 +49,43 @@ class CustomerPaymentController extends Controller
         return redirect()->route('customer-payments.index')->with('success', 'تم تسجيل الدفعة بنجاح');
     }
 
+    public function edit(CustomerPayment $customerPayment)
+    {
+        $customers = Customer::active()->orderBy('name')->get();
+        return view('customer-payments.edit', compact('customerPayment', 'customers'));
+    }
+
+    public function update(Request $request, CustomerPayment $customerPayment)
+    {
+        $request->validate([
+            'payment_date'   => 'required|date',
+            'amount'         => 'required|numeric|min:0.01',
+            'payment_method' => 'required|in:cash,bank_transfer,check',
+            'notes'          => 'nullable|string',
+        ]);
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($request, $customerPayment) {
+            // Update payment
+            $customerPayment->update($request->only(['payment_date', 'amount', 'payment_method', 'notes']));
+            
+            // Update treasury transaction
+            $treasuryTx = \App\Models\TreasuryTransaction::where('reference_type', 'customer_payment')
+                ->where('reference_id', $customerPayment->id)
+                ->first();
+                
+            if ($treasuryTx) {
+                $treasuryTx->update([
+                    'amount' => $request->amount,
+                    'transaction_date' => $request->payment_date,
+                    'description' => 'دفعة من العميل: ' . $customerPayment->customer->name,
+                ]);
+                $this->treasuryService->recalculateBalances();
+            }
+        });
+
+        return redirect()->route('customer-payments.index')->with('success', 'تم تحديث الدفعة بنجاح');
+    }
+
     public function destroy(CustomerPayment $customerPayment)
     {
         \Illuminate\Support\Facades\DB::transaction(function () use ($customerPayment) {

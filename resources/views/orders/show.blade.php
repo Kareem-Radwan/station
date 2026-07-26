@@ -25,6 +25,12 @@
         </form>
         @endif
         <a href="{{ route('orders.edit', $order) }}" class="btn-primary text-white px-4 py-2 rounded-lg text-sm"><i class="fas fa-edit"></i> تعديل</a>
+        <form action="{{ route('orders.destroy', $order) }}" method="POST" class="inline" onsubmit="return confirm('هل أنت متأكد من حذف هذا الطلب؟ سيتم حذف جميع تكاليف المواد والحركات المرتبطة من الخزينة والمخزون')">
+            @csrf @method('DELETE')
+            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                <i class="fas fa-trash"></i> حذف
+            </button>
+        </form>
     </div>
 </div>
 

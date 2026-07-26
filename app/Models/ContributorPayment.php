@@ -40,4 +40,14 @@ class ContributorPayment extends Model
     {
         return Contributor::paymentMethodLabel($this->payment_method);
     }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when a contributor payment is deleted
+        static::deleting(function ($payment) {
+            TreasuryTransaction::where('reference_type', 'contributor_payment')
+                ->where('reference_id', $payment->id)
+                ->delete();
+        });
+    }
 }

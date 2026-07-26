@@ -322,6 +322,57 @@ class OrderService
     }
 
     /**
+     * Completely delete an order and remove all associated material costs,
+     * treasury transactions, inventory movements, credits, and schedule entries.
+     */
+    public function deleteOrder(Order $order): void
+    {
+        DB::transaction(function () use ($order) {
+            // 1. Restore cement balance if operational
+            if ($order->concrete_type === 'operational' && $order->cement_deducted > 0 && $order->customer) {
+                $order->customer->addCement((float)$order->cement_deducted);
+            }
+
+            // 2. Restore inventory stock if movements exist
+            $movements = \App\Models\InventoryMovement::where('reference_type', 'order')
+                ->where('reference_id', $order->id)
+                ->where('type', 'out')
+                ->with('item')
+                ->get();
+
+            foreach ($movements as $movement) {
+                if ($movement->item) {
+                    $movement->item->addStock((float)$movement->quantity);
+                }
+                $movement->delete();
+            }
+
+            // 3. Delete order expenses and their treasury records
+            $order->load('expenses');
+            foreach ($order->expenses as $expense) {
+                $this->treasuryService->deleteTransaction('order_expense', $expense->id);
+                $expense->delete();
+            }
+
+            // 4. Delete all treasury transactions for this order (material_cost, customer_payment, etc.)
+            $this->treasuryService->deleteTransaction('order', $order->id);
+
+            // 5. Delete associated credit records
+            Credit::where('reference_type', 'order')
+                ->where('reference_id', $order->id)
+                ->delete();
+
+            // 6. Delete schedule entry if exists
+            if ($order->scheduleEntry) {
+                $order->scheduleEntry->delete();
+            }
+
+            // 7. Delete the order itself
+            $order->delete();
+        });
+    }
+
+    /**
      * Process order delivery: deduct inventory and record treasury transactions.
      * This is called ONLY when order status becomes 'delivered'.
      */

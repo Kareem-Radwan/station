@@ -73,7 +73,7 @@
                     <td class="px-4 py-3">
                         @if($customer->isOperational())
                         <span class="{{ (float)$customer->cement_balance < 500 ? 'text-red-400' : 'text-amber-400' }} font-medium">
-                            {{ number_format($customer->cement_balance, 0) }} طن
+                            {{ number_format($customer->cement_balance, 2) }} طن
                         </span>
                         @else
                         <span class="text-slate-500 text-xs">—</span>

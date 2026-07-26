@@ -83,4 +83,14 @@ class Expense extends Model
             'land_rent'           => 'إداري',
         ];
     }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when an expense is deleted
+        static::deleting(function ($expense) {
+            TreasuryTransaction::where('reference_type', 'expense')
+                ->where('reference_id', $expense->id)
+                ->delete();
+        });
+    }
 }

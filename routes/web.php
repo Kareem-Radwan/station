@@ -182,6 +182,9 @@ Route::middleware('auth')->group(function () {
         Route::get('treasury', [TreasuryController::class, 'index'])->name('treasury.index');
         Route::get('treasury/create', [TreasuryController::class, 'create'])->name('treasury.create');
         Route::post('treasury', [TreasuryController::class, 'store'])->name('treasury.store');
+        Route::get('treasury/{treasury}/edit', [TreasuryController::class, 'edit'])->name('treasury.edit');
+        Route::put('treasury/{treasury}', [TreasuryController::class, 'update'])->name('treasury.update');
+        Route::delete('treasury/{treasury}', [TreasuryController::class, 'destroy'])->name('treasury.destroy');
 
         // ─── Credits ──────────────────────────────────────────────────────────────────
         Route::resource('credits', CreditController::class)->only(['index', 'create', 'store', 'show']);

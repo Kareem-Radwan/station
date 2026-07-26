@@ -116,8 +116,8 @@ class OrderController extends Controller
     public function destroy(Order $order)
     {
         try {
-            $this->orderService->cancelOrder($order);
-            return redirect()->route('orders.index')->with('success', 'تم إلغاء الطلب');
+            $this->orderService->deleteOrder($order);
+            return redirect()->route('orders.index')->with('success', 'تم حذف الطلب وجميع التكاليف والحركات المرتبطة به من الخزينة بنجاح');
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());
         }

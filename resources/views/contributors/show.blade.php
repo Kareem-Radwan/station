@@ -200,6 +200,7 @@
                         <th class="px-4 py-3 text-right text-slate-400">طريقة الدفع</th>
                         <th class="px-4 py-3 text-right text-slate-400">المرجع</th>
                         <th class="px-4 py-3 text-right text-slate-400">ملاحظات</th>
+                        <th class="px-4 py-3 text-right text-slate-400">إجراءات</th>
                     </tr>
                 </thead>
 
@@ -228,12 +229,26 @@
                                 {{ $payment->notes ?: '-' }}
                             </td>
 
+                            <td class="px-4 py-3">
+                                <div class="flex gap-2">
+                                    <a href="{{ route('contributor-payments.edit', $payment) }}" class="text-blue-400 hover:text-blue-300" title="تعديل">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <form action="{{ route('contributor-payments.destroy', $payment) }}" method="POST" class="inline" onsubmit="return confirm('هل أنت متأكد من حذف هذه الدفعة؟ سيتم تعديل رصيد المساهم والحركة في الخزينة')">
+                                        @csrf @method('DELETE')
+                                        <button type="submit" class="text-red-400 hover:text-red-300" title="حذف">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+
                         </tr>
 
                     @empty
 
                         <tr>
-                            <td colspan="5" class="px-4 py-8 text-center text-slate-500">
+                            <td colspan="6" class="px-4 py-8 text-center text-slate-500">
                                 لا توجد مدفوعات مسجلة
                             </td>
                         </tr>

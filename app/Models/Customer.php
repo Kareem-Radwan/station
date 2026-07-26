@@ -50,16 +50,29 @@ class Customer extends Model
 
     public function getTotalOrdersAmount(): float
     {
-        return (float)$this->orders()->sum('total_amount');
+        return (float)$this->orders()->where('status', '!=', 'cancelled')->sum('total_amount');
     }
 
     public function getTotalPaid(): float
     {
-        return (float)$this->payments()->sum('amount');
+        $incoming = (float)$this->payments()->where('amount', '>', 0)->sum('amount')
+                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'in')->sum('amount');
+        $outgoing = abs((float)$this->payments()->where('amount', '<', 0)->sum('amount'))
+                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'out')->sum('amount');
+        return $incoming - $outgoing;
     }
 
     public function getOutstandingBalance(): float
     {
-        return $this->getTotalOrdersAmount() - $this->getTotalPaid();
+        $totalOrders = (float)$this->orders()->where('status', '!=', 'cancelled')->sum('total_amount');
+        $totalCash = (float)$this->orders()->where('status', '!=', 'cancelled')->sum('cash_amount');
+        $netCreditOrders = $totalOrders - $totalCash;
+        
+        $incoming = (float)$this->payments()->where('amount', '>', 0)->sum('amount')
+                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'in')->sum('amount');
+        $outgoing = abs((float)$this->payments()->where('amount', '<', 0)->sum('amount'))
+                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'out')->sum('amount');
+
+        return $netCreditOrders + $outgoing - $incoming;
     }
 }

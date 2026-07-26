@@ -114,25 +114,52 @@ class TreasuryService
     public function deleteTransaction(string $referenceType, int $referenceId): void
     {
         DB::transaction(function () use ($referenceType, $referenceId) {
-            $transaction = TreasuryTransaction::where('reference_type', $referenceType)
+            // Delete all treasury transactions with this reference
+            TreasuryTransaction::where('reference_type', $referenceType)
                 ->where('reference_id', $referenceId)
-                ->first();
+                ->delete();
 
+            // Recalculate all balances after deletion
+            $this->recalculateBalances();
+        });
+    }
+    
+    public function deleteTransactionById(int $transactionId): void
+    {
+        DB::transaction(function () use ($transactionId) {
+            $transaction = TreasuryTransaction::find($transactionId);
+            
             if ($transaction) {
                 $transaction->delete();
+                $this->recalculateBalances();
+            }
+        });
+    }
 
-                // Recalculate all balances from the first transaction to current
-                $transactions = TreasuryTransaction::orderBy('id')->get();
-                $balance = 0;
-                foreach ($transactions as $t) {
-                    if ($t->type === 'in') {
-                        $balance += (float)$t->amount;
-                    } else {
-                        $balance -= (float)$t->amount;
-                    }
-                    $t->update(['balance_after' => $balance]);
+    public function updateTransaction(
+        string $referenceType,
+        int $referenceId,
+        array $data
+    ): void {
+        DB::transaction(function () use ($referenceType, $referenceId, $data) {
+            $transactions = TreasuryTransaction::where('reference_type', $referenceType)
+                ->where('reference_id', $referenceId)
+                ->get();
+
+            foreach ($transactions as $transaction) {
+                $updateData = [];
+                if (isset($data['type'])) $updateData['type'] = $data['type'];
+                if (isset($data['category'])) $updateData['category'] = $data['category'];
+                if (isset($data['amount'])) $updateData['amount'] = $data['amount'];
+                if (isset($data['transaction_date'])) $updateData['transaction_date'] = $data['transaction_date'];
+                if (isset($data['description'])) $updateData['description'] = $data['description'];
+
+                if (!empty($updateData)) {
+                    $transaction->update($updateData);
                 }
             }
+
+            $this->recalculateBalances();
         });
     }
 }

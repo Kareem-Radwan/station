@@ -34,4 +34,14 @@ class SupplierPurchase extends Model
             default   => $this->status,
         };
     }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when a supplier purchase is deleted
+        static::deleting(function ($purchase) {
+            TreasuryTransaction::where('reference_type', 'purchase')
+                ->where('reference_id', $purchase->id)
+                ->delete();
+        });
+    }
 }

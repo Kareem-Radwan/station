@@ -16,4 +16,14 @@ class CustomerPayment extends Model
     public function customer()   { return $this->belongsTo(Customer::class); }
     public function order()      { return $this->belongsTo(Order::class); }
     public function recordedBy() { return $this->belongsTo(User::class, 'recorded_by'); }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when a customer payment is deleted
+        static::deleting(function ($payment) {
+            TreasuryTransaction::where('reference_type', 'customer_payment')
+                ->where('reference_id', $payment->id)
+                ->delete();
+        });
+    }
 }

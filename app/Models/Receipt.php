@@ -20,4 +20,14 @@ class Receipt extends Model
     public function supplier()   { return $this->belongsTo(Supplier::class); }
     public function items()      { return $this->hasMany(ReceiptItem::class); }
     public function recordedBy() { return $this->belongsTo(User::class, 'recorded_by'); }
+
+    protected static function booted()
+    {
+        // Cascade delete treasury transactions when a receipt is deleted
+        static::deleting(function ($receipt) {
+            TreasuryTransaction::where('reference_type', 'receipt')
+                ->where('reference_id', $receipt->id)
+                ->delete();
+        });
+    }
 }

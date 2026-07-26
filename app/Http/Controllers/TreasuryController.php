@@ -105,14 +105,17 @@ class TreasuryController extends Controller
                 // ─── Customer Payment ────────────────────────────────────────────
                 case 'customer_payment':
                 case 'receipt_in':
+                case 'receipt_out':
+                case 'credit_payment':
+                    $signedAmount = $type === 'out' ? -$amount : $amount;
                     if ($refId && $refType === 'customer') {
                         $cp = CustomerPayment::create([
                             'customer_id'    => $refId,
                             'order_id'       => null,
                             'payment_date'   => $txDate,
-                            'amount'         => $amount,
+                            'amount'         => $signedAmount,
                             'payment_method' => $paymentMethod,
-                            'notes'          => $description ?: null,
+                            'notes'          => $description ?: ($type === 'out' ? 'سداد ديون (صادر)' : null),
                             'recorded_by'    => auth()->id(),
                         ]);
                         $domainRef = ['type' => 'customer_payment', 'id' => $cp->id];
@@ -122,7 +125,7 @@ class TreasuryController extends Controller
                             'customer_id'    => $order?->customer_id,
                             'order_id'       => $refId,
                             'payment_date'   => $txDate,
-                            'amount'         => $amount,
+                            'amount'         => $signedAmount,
                             'payment_method' => $paymentMethod,
                             'notes'          => $description ?: null,
                             'recorded_by'    => auth()->id(),
@@ -204,11 +207,17 @@ class TreasuryController extends Controller
                     }
                     break;
 
-                // ─── General Expense categories ──────────────────────────────────
+                // ─── General Expense & Employee & Equipment & Rental categories ──
                 case 'rental':
                 case 'rental_maintenance':
                 case 'vehicle_equipment':
                 case 'plant_maintenance':
+                case 'salary':
+                case 'overtime':
+                case 'employee_borrow_repayment':
+                case 'employee_borrow_return':
+                case 'employee_deductions':
+                case 'inventory_sale':
                 case 'expense':
                     $expense = Expense::create([
                         'category'     => $category,
@@ -256,5 +265,308 @@ class TreasuryController extends Controller
         });
 
         return redirect()->route('treasury.index')->with('success', 'تم تسجيل الحركة في الخزينة وربطها بالسجلات المعنية بنجاح');
+    }
+
+    // ─── Edit ──────────────────────────────────────────────────────────────────
+
+    public function edit(TreasuryTransaction $treasury)
+    {
+        $customers       = Customer::active()->orderBy('name')->get(['id','name','phone']);
+        $suppliers       = Supplier::active()->orderBy('name')->get(['id','name','phone']);
+        $employees       = Employee::active()->orderBy('name')->get(['id','name','position']);
+        $contributors    = Contributor::where('is_active', true)->orderBy('name')->get(['id','name']);
+        $equipment       = Equipment::orderBy('name')->get(['id','name','type']);
+        $rentalContracts = RentalContract::where('status','active')->orderBy('equipment_name')->get(['id','equipment_name','supplier_id']);
+        $landRents       = LandRent::orderBy('due_date','desc')->get(['id','description','annual_amount','due_date']);
+        $orders          = Order::with('customer:id,name')
+                            ->whereIn('status',['pending','scheduled','delivered'])
+                            ->orderBy('delivery_date','desc')
+                            ->limit(100)
+                            ->get(['id','customer_id','delivery_date','total_amount','status']);
+
+        return view('treasury.edit', compact(
+            'treasury',
+            'customers','suppliers','employees','contributors',
+            'equipment','rentalContracts','landRents','orders'
+        ));
+    }
+
+    // ─── Update ────────────────────────────────────────────────────────────────
+
+    public function update(Request $request, TreasuryTransaction $treasury)
+    {
+        $validated = $request->validate([
+            'type'             => 'required|in:in,out',
+            'category'         => 'required|string|max:100',
+            'amount'           => 'required|numeric|min:0.01',
+            'transaction_date' => 'required|date',
+            'description'      => 'nullable|string|max:1000',
+        ]);
+
+        DB::transaction(function () use ($treasury, $validated) {
+            $oldAmount = (float)$treasury->amount;
+            $newAmount = (float)$validated['amount'];
+
+            $treasury->update([
+                'type'             => $validated['type'],
+                'category'         => $validated['category'],
+                'amount'           => $newAmount,
+                'transaction_date' => $validated['transaction_date'],
+                'description'      => $validated['description'] ?? '',
+            ]);
+
+            // Sync update to related domain record if present
+            $this->updateRelatedDomainRecord($treasury, $oldAmount, $newAmount, $validated);
+
+            // Recalculate all balances after update
+            $this->treasuryService->recalculateBalances();
+        });
+
+        return redirect()->route('treasury.index')->with('success', 'تم تحديث الحركة في الخزينة بنجاح');
+    }
+
+    // ─── Destroy ───────────────────────────────────────────────────────────────
+
+    public function destroy(TreasuryTransaction $treasury)
+    {
+        DB::transaction(function () use ($treasury) {
+            // Delete the related domain record if it exists
+            $this->deleteRelatedDomainRecord($treasury);
+
+            // Delete the treasury transaction
+            $treasury->delete();
+
+            // Recalculate all balances
+            $this->treasuryService->recalculateBalances();
+        });
+
+        return redirect()->route('treasury.index')->with('success', 'تم حذف الحركة من الخزينة بنجاح');
+    }
+
+    // ─── Helper: Update Related Domain Record ─────────────────────────────────
+
+    private function updateRelatedDomainRecord(TreasuryTransaction $treasury, float $oldAmount, float $newAmount, array $data): void
+    {
+        if (!$treasury->reference_type || !$treasury->reference_id) {
+            return;
+        }
+
+        switch ($treasury->reference_type) {
+            case 'customer_payment':
+                $payment = CustomerPayment::find($treasury->reference_id);
+                if ($payment) {
+                    $signedNewAmount = $treasury->type === 'out' ? -$newAmount : $newAmount;
+                    $payment->update([
+                        'amount'       => $signedNewAmount,
+                        'payment_date' => $data['transaction_date'],
+                        'notes'        => $data['description'] ?? $payment->notes,
+                    ]);
+                }
+                break;
+
+            case 'supplier_payment':
+                $payment = SupplierPayment::find($treasury->reference_id);
+                if ($payment) {
+                    $diff = $newAmount - $oldAmount;
+                    if ($payment->supplier) {
+                        if ($payment->payment_type === 'payment') {
+                            $payment->supplier->decrement('balance', $diff);
+                        } else {
+                            $payment->supplier->increment('balance', $diff);
+                        }
+                    }
+                    $payment->update([
+                        'amount'       => $newAmount,
+                        'payment_date' => $data['transaction_date'],
+                        'notes'        => $data['description'] ?? $payment->notes,
+                    ]);
+                }
+                break;
+
+            case 'supplier_purchase':
+            case 'purchase':
+                $purchase = SupplierPurchase::find($treasury->reference_id);
+                if ($purchase) {
+                    $diff = $newAmount - $oldAmount;
+                    if ($purchase->supplier) {
+                        $purchase->supplier->increment('balance', $diff);
+                    }
+                    $purchase->update([
+                        'total_amount'  => $newAmount,
+                        'purchase_date' => $data['transaction_date'],
+                        'notes'         => $data['description'] ?? $purchase->notes,
+                    ]);
+                }
+                break;
+
+            case 'contributor_payment':
+                $payment = ContributorPayment::find($treasury->reference_id);
+                if ($payment) {
+                    $diff = $newAmount - $oldAmount;
+                    if ($payment->contributor) {
+                        $payment->contributor->decrement('share_amount', $diff);
+                    }
+                    $payment->update([
+                        'amount'       => $newAmount,
+                        'payment_date' => $data['transaction_date'],
+                        'notes'        => $data['description'] ?? $payment->notes,
+                    ]);
+                }
+                break;
+
+            case 'land_rent_payment':
+                $payment = LandRentPayment::find($treasury->reference_id);
+                if ($payment) {
+                    $diff = $newAmount - $oldAmount;
+                    if ($payment->landRent) {
+                        $payment->landRent->increment('paid_amount', $diff);
+                    }
+                    $payment->update([
+                        'amount'       => $newAmount,
+                        'payment_date' => $data['transaction_date'],
+                        'notes'        => $data['description'] ?? $payment->notes,
+                    ]);
+                }
+                break;
+
+            case 'expense':
+                $expense = Expense::find($treasury->reference_id);
+                if ($expense) {
+                    $expense->update([
+                        'amount'       => $newAmount,
+                        'expense_date' => $data['transaction_date'],
+                        'description'  => $data['description'] ?? $expense->description,
+                    ]);
+                }
+                break;
+
+            case 'receipt':
+                $receipt = Receipt::find($treasury->reference_id);
+                if ($receipt) {
+                    $receipt->update([
+                        'amount'       => $newAmount,
+                        'total_amount' => $newAmount,
+                        'receipt_date' => $data['transaction_date'],
+                        'description'  => $data['description'] ?? $receipt->description,
+                    ]);
+                }
+                break;
+
+            case EmployeeBorrow::class:
+            case 'employee_borrow':
+                $borrow = EmployeeBorrow::find($treasury->reference_id);
+                if ($borrow) {
+                    $diff = $newAmount - $oldAmount;
+                    $borrow->update([
+                        'amount'           => $newAmount,
+                        'remaining_amount' => max(0, $borrow->remaining_amount + $diff),
+                        'borrow_date'      => $data['transaction_date'],
+                        'reason'           => $data['description'] ?? $borrow->reason,
+                    ]);
+                }
+                break;
+        }
+    }
+
+    // ─── Helper: Delete Related Domain Record ─────────────────────────────────
+
+    private function deleteRelatedDomainRecord(TreasuryTransaction $treasury): void
+    {
+        if (!$treasury->reference_type || !$treasury->reference_id) {
+            return;
+        }
+
+        switch ($treasury->reference_type) {
+            case 'customer_payment':
+                $payment = CustomerPayment::find($treasury->reference_id);
+                if ($payment) {
+                    if ($payment->customer) {
+                        $payment->customer->decrement('balance', $payment->amount);
+                    }
+                    $payment->delete();
+                }
+                break;
+
+            case 'supplier_payment':
+                $payment = SupplierPayment::find($treasury->reference_id);
+                if ($payment) {
+                    if ($payment->supplier) {
+                        if ($payment->payment_type === 'payment') {
+                            $payment->supplier->increment('balance', $payment->amount);
+                        } else {
+                            $payment->supplier->decrement('balance', $payment->amount);
+                        }
+                    }
+                    $payment->delete();
+                }
+                break;
+
+            case 'supplier_purchase':
+            case 'purchase':
+                $purchase = SupplierPurchase::find($treasury->reference_id);
+                if ($purchase) {
+                    if ($purchase->supplier) {
+                        $purchase->supplier->decrement('balance', $purchase->total_amount);
+                    }
+                    $purchase->delete();
+                }
+                break;
+
+            case 'contributor_payment':
+                $payment = ContributorPayment::find($treasury->reference_id);
+                if ($payment) {
+                    if ($payment->contributor) {
+                        $payment->contributor->increment('share_amount', $payment->amount);
+                    }
+                    $payment->delete();
+                }
+                break;
+
+            case EmployeeBorrow::class:
+            case 'employee_borrow':
+                $borrow = EmployeeBorrow::find($treasury->reference_id);
+                if ($borrow) {
+                    $borrow->delete();
+                }
+                break;
+
+            case 'land_rent_payment':
+                $payment = LandRentPayment::find($treasury->reference_id);
+                if ($payment) {
+                    if ($payment->landRent) {
+                        $payment->landRent->decrement('paid_amount', $payment->amount);
+                    }
+                    $payment->delete();
+                }
+                break;
+
+            case 'expense':
+                $expense = Expense::find($treasury->reference_id);
+                if ($expense) {
+                    $expense->delete();
+                }
+                break;
+
+            case 'receipt':
+                $receipt = Receipt::find($treasury->reference_id);
+                if ($receipt) {
+                    $receipt->delete();
+                }
+                break;
+
+            case 'neighboring_station_transaction':
+                $nst = \App\Models\NeighboringStationTransaction::find($treasury->reference_id);
+                if ($nst) {
+                    $nst->delete();
+                }
+                break;
+
+            case 'order_expense':
+                $oe = \App\Models\OrderExpense::find($treasury->reference_id);
+                if ($oe) {
+                    $oe->delete();
+                }
+                break;
+        }
     }
 }

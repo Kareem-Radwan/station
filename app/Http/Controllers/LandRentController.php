@@ -83,8 +83,14 @@ class LandRentController extends Controller
 
     public function destroy(LandRent $landRent)
     {
-        $landRent->delete();
-        return redirect()->route('land-rent.index')->with('success', 'تم حذف العقد');
+        \Illuminate\Support\Facades\DB::transaction(function () use ($landRent) {
+            foreach ($landRent->payments as $payment) {
+                $this->treasuryService->deleteTransaction('land_rent_payment', $payment->id);
+                $payment->delete();
+            }
+            $landRent->delete();
+        });
+        return redirect()->route('land-rent.index')->with('success', 'تم حذف عقد الإيجار بجميع دفعاته من الخزينة بنجاح');
     }
 
     public function pay(Request $request, LandRent $landRent)
