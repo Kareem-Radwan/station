@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Credit;
 use App\Services\TreasuryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CreditController extends Controller
 {
@@ -67,31 +68,65 @@ class CreditController extends Controller
 
     public function markPaid(Credit $credit)
     {
-        $credit->update(['status' => 'paid', 'paid_date' => now()->toDateString()]);
-
-        if ($credit->creditable_type === 'customer') {
-            $party = \App\Models\Customer::find($credit->creditable_id);
-            $this->treasuryService->recordIncoming(
-                amount: (float)$credit->amount,
-                category: 'credit_payment',
-                description: 'تسديد آجل من العميل: ' . ($party?->name ?? ''),
-                referenceType: 'credit',
-                referenceId: $credit->id
-            );
-        } elseif ($credit->creditable_type === 'supplier') {
-            $party = \App\Models\Supplier::find($credit->creditable_id);
-            if ($party) {
-                $party->decrement('balance', (float)$credit->amount);
-            }
-            $this->treasuryService->recordOutgoing(
-                amount: (float)$credit->amount,
-                category: 'supplier_payment',
-                description: 'تسديد مستحقات للمورد: ' . ($party?->name ?? ''),
-                referenceType: 'credit',
-                referenceId: $credit->id
-            );
+        if ($credit->status === 'paid') {
+            return back()->with('error', 'هذا الدين مسدد مسبقاً');
         }
 
-        return back()->with('success', 'تم تأكيد السداد وتسجيله في الخزينة');
+        DB::transaction(function () use ($credit) {
+            // Mark credit as paid
+            $credit->update(['status' => 'paid', 'paid_date' => now()->toDateString()]);
+
+            if ($credit->creditable_type === 'customer') {
+                // Create customer payment record
+                $payment = \App\Models\CustomerPayment::create([
+                    'customer_id'    => $credit->creditable_id,
+                    'order_id'       => $credit->reference_type === 'order' ? $credit->reference_id : null,
+                    'payment_date'   => now()->toDateString(),
+                    'amount'         => $credit->amount,
+                    'payment_method' => 'cash',
+                    'notes'          => 'تسديد دين رقم #' . $credit->id,
+                    'recorded_by'    => auth()->id(),
+                ]);
+
+                // Record treasury incoming
+                $party = \App\Models\Customer::find($credit->creditable_id);
+                $this->treasuryService->recordIncoming(
+                    amount: (float)$credit->amount,
+                    category: 'customer_payment',
+                    description: 'تسديد دين من العميل: ' . ($party?->name ?? ''),
+                    referenceType: 'customer_payment',
+                    referenceId: $payment->id
+                );
+            } elseif ($credit->creditable_type === 'supplier') {
+                // Create supplier payment record
+                $payment = \App\Models\SupplierPayment::create([
+                    'supplier_id'          => $credit->creditable_id,
+                    'supplier_purchase_id' => $credit->reference_type === 'purchase' ? $credit->reference_id : null,
+                    'payment_date'         => now()->toDateString(),
+                    'amount'               => $credit->amount,
+                    'payment_method'       => 'cash',
+                    'payment_type'         => 'payment',
+                    'notes'                => 'تسديد دين رقم #' . $credit->id,
+                    'recorded_by'          => auth()->id(),
+                ]);
+
+                // Decrement supplier balance
+                $party = \App\Models\Supplier::find($credit->creditable_id);
+                if ($party) {
+                    $party->decrement('balance', (float)$credit->amount);
+                }
+
+                // Record treasury outgoing
+                $this->treasuryService->recordOutgoing(
+                    amount: (float)$credit->amount,
+                    category: 'supplier_payment',
+                    description: 'تسديد مستحقات للمورد: ' . ($party?->name ?? ''),
+                    referenceType: 'supplier_payment',
+                    referenceId: $payment->id
+                );
+            }
+        });
+
+        return back()->with('success', 'تم تأكيد السداد وتسجيله في الخزينة والدفعات');
     }
 }
