@@ -60,8 +60,8 @@
             <i class="fas fa-weight text-amber-400"></i> رصيد الاسمنت
         </h3>
         <div class="text-center py-4">
-            <p class="text-5xl font-bold {{ (float)$customer->cement_balance < 500 ? 'text-red-400' : 'text-amber-400' }}">
-                {{ number_format($customer->cement_balance, 0) }}
+            <p class="text-5xl font-bold {{ (float)$customer->cement_balance < 40 ? 'text-red-400' : 'text-amber-400' }}">
+                {{ number_format($customer->cement_balance, 2) }}
             </p>
             <p class="text-slate-400 mt-1">طن</p>
         </div>
@@ -71,6 +71,11 @@
                 <label class="text-slate-400 text-xs mb-1 block">إضافة رصيد (طن)</label>
                 <input type="number" step="0.001" name="amount" min="0.001" required
                     class="input-field w-full px-3 py-2 text-sm" placeholder="0.00">
+            </div>
+            <div>
+                <label class="text-slate-400 text-xs mb-1 block">رقم الفاتورة</label>
+                <input type="text" name="invoice_number"
+                    class="input-field w-full px-3 py-2 text-sm" placeholder="رقم الفاتورة (اختياري)">
             </div>
             <button type="submit" class="w-full btn-primary text-white px-4 py-2 rounded-lg text-sm font-bold">
                 <i class="fas fa-plus"></i> إضافة اسمنت
@@ -143,7 +148,7 @@
                     <td class="px-4 py-3 text-slate-300">{{ $order->delivery_date->format('d/m/Y') }}</td>
                     <td class="px-4 py-3 text-white font-medium">{{ $order->quantity_m3 }} م³</td>
                     <td class="px-4 py-3 text-amber-400">
-                        {{ $order->cement_deducted ? number_format($order->cement_deducted,0).' كغ' : '-' }}
+                        {{ $order->cement_deducted ? number_format($order->cement_deducted,2).' طن' : '-' }}
                     </td>
                     <td class="px-4 py-3 text-white">{{ $order->total_amount ? number_format($order->total_amount,0) : '-' }}</td>
                     <td class="px-4 py-3 text-slate-300">{{ $order->payment_type_label }}</td>

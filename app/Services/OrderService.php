@@ -120,8 +120,8 @@ class OrderService
     /**
      * Deduct inventory stock and record material costs to treasury.
      *
-     * For operational orders: skip Cement inventory deduction (customer provides own cement).
-     * For complete orders: deduct all 6 materials including Cement.
+     * For operational orders: deduct Cement from both customer balance AND inventory (customer brings cement to plant).
+     * For complete orders: deduct all 6 materials including Cement from inventory.
      * 
      * Treasury cost deduction:
      * - Operational orders: all materials EXCEPT Cement (customer provides cement)
@@ -137,11 +137,6 @@ class OrderService
         $customPrices = $order->material_prices ?? [];
 
         foreach ($recipe as $materialName => $amountPerM3) {
-            // For operational orders, skip Cement from inventory (customer provides own cement)
-            if ($isOperational && $materialName === 'Cement') {
-                continue;
-            }
-
             // Lock the row for update to prevent race conditions
             $item = InventoryItem::where('name', $materialName)->lockForUpdate()->first();
             if (!$item) {
@@ -155,7 +150,7 @@ class OrderService
 
             if ($deductQty <= 0) continue;
 
-            // Deduct from inventory stock
+            // Deduct from inventory stock (for ALL materials including Cement)
             if ((float)$item->current_stock < $deductQty) {
                 throw new \Exception(
                     'المخزون غير كافٍ لـ ' . $item->name_ar .

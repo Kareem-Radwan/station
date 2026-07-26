@@ -84,6 +84,12 @@
                     <input type="number" step="0.001" name="cement_balance" placeholder="{{ old('cement_balance', 0) }}"
                         class="input-field w-full px-3 py-2.5 text-sm">
                 </div>
+                <div class="md:col-span-3">
+                    <label class="block text-slate-400 text-sm mb-1.5">رقم الفاتورة</label>
+                    <input type="text" name="invoice_number" value="{{ old('invoice_number') }}"
+                        class="input-field w-full px-3 py-2.5 text-sm" placeholder="رقم فاتورة الاسمنت (اختياري)">
+                    <p class="text-slate-500 text-xs mt-1">رقم فاتورة الاسمنت إذا كان هناك رصيد أولي</p>
+                </div>
             </div>
         </div>
 

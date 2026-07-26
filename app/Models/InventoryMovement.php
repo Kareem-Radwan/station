@@ -9,7 +9,7 @@ class InventoryMovement extends Model
     protected $fillable = [
         'inventory_item_id', 'type', 'quantity', 'balance_after',
         'unit_cost', 'total_cost', 'supplier_id', 'reference_type',
-        'reference_id', 'notes', 'recorded_by', 'movement_date',
+        'reference_id', 'invoice_number', 'notes', 'recorded_by', 'movement_date',
     ];
 
     protected $casts = [
@@ -23,12 +23,20 @@ class InventoryMovement extends Model
     public function recordedBy() { return $this->belongsTo(User::class, 'recorded_by'); }
     public function purchase()   { return $this->belongsTo(SupplierPurchase::class, 'reference_id'); }
 
-    public function getInvoiceNumberAttribute(): ?string
+    public function getCustomerAttribute()
     {
-        if ($this->reference_type === 'purchase' && $this->purchase) {
-            return $this->purchase->invoice_number ?? '#' . $this->purchase->id;
+        if ($this->reference_type === 'customer') {
+            return Customer::find($this->reference_id);
         }
         return null;
+    }
+
+    public function getSupplierNameAttribute(): ?string
+    {
+        if ($this->reference_type === 'customer' && $this->customer) {
+            return $this->customer->name;
+        }
+        return $this->supplier?->name;
     }
 
     public function getTypeLabelAttribute(): string

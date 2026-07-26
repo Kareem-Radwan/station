@@ -32,13 +32,13 @@
                 <tr class="table-row">
                     <td class="px-4 py-3 text-slate-300">{{ $m->movement_date->format('d/m/Y') }}</td>
                     <td class="px-4 py-3 text-slate-300 font-mono text-xs whitespace-nowrap">
-                        @if($m->reference_type === 'purchase' && $m->purchase)
+                        @if($m->invoice_number)
+                            <span class="text-slate-300">{{ $m->invoice_number }}</span>
+                        @elseif($m->reference_type === 'purchase' && $m->purchase)
                             <a href="{{ route('supplier-purchases.show', $m->purchase) }}" class="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1">
                                 <i class="fas fa-file-invoice text-slate-500 text-xs"></i>
                                 {{ $m->purchase->invoice_number ?? '#' . $m->purchase->id }}
                             </a>
-                        @elseif($m->invoice_number)
-                            <span class="text-slate-300">{{ $m->invoice_number }}</span>
                         @else
                             <span class="text-slate-600">-</span>
                         @endif
@@ -54,7 +54,13 @@
                     </td>
                     <td class="px-4 py-3 text-amber-400 font-medium">{{ number_format($m->balance_after, 1) }}</td>
                     <td class="px-4 py-3 text-slate-400">{{ $m->unit_cost ? number_format($m->unit_cost,2) : '-' }}</td>
-                    <td class="px-4 py-3 text-slate-400">{{ $m->supplier?->name ?? '-' }}</td>
+                    <td class="px-4 py-3 text-slate-400">
+                        @if($m->reference_type === 'customer' && $m->customer)
+                            <span class="text-blue-400">{{ $m->customer->name }}</span>
+                        @else
+                            {{ $m->supplier?->name ?? '-' }}
+                        @endif
+                    </td>
                     <td class="px-4 py-3 text-slate-500 text-xs">{{ $m->notes ?? '-' }}</td>
                 </tr>
                 @empty

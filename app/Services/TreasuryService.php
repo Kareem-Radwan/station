@@ -45,6 +45,44 @@ class TreasuryService
         });
     }
 
+    public function recordIncoming(
+        float $amount,
+        string $category,
+        string $description,
+        ?string $referenceType = null,
+        ?int $referenceId = null,
+        ?string $transactionDate = null
+    ): TreasuryTransaction {
+        return $this->record(
+            type: 'in',
+            amount: $amount,
+            category: $category,
+            description: $description,
+            transactionDate: $transactionDate,
+            referenceType: $referenceType,
+            referenceId: $referenceId
+        );
+    }
+
+    public function recordOutgoing(
+        float $amount,
+        string $category,
+        string $description,
+        ?string $referenceType = null,
+        ?int $referenceId = null,
+        ?string $transactionDate = null
+    ): TreasuryTransaction {
+        return $this->record(
+            type: 'out',
+            amount: $amount,
+            category: $category,
+            description: $description,
+            transactionDate: $transactionDate,
+            referenceType: $referenceType,
+            referenceId: $referenceId
+        );
+    }
+
     public function recalculateBalances(): void
     {
         $balance = 0;
