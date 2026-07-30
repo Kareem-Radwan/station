@@ -15,6 +15,10 @@
         <span class="text-slate-400 text-sm">الرصيد الحالي:</span>
         <span class="text-amber-400 font-bold text-xl">{{ number_format($item->current_stock, 1) }} {{ $item->unit }}</span>
     </div>
+    <div class="flex-1"></div>
+    <a href="{{ route('reports.export.inventory-movements', $item) }}" class="btn-accent text-slate-900 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+        <i class="fas fa-file-excel"></i> تصدير إكسل
+    </a>
 </div>
 
 <div class="card overflow-hidden">

@@ -1,4 +1,4 @@
-﻿@extends('layouts.app')
+@extends('layouts.app')
 @section('title', 'المرتجعات')
 @section('content')
 
@@ -98,6 +98,13 @@
                     'violet',
                     'يعرض جميع المعاملات مع المحطات المجاورة والأرصدة المستحقة',
                 ],
+                [
+                    'ميزان المراجعة',
+                    'fa-scale-balanced',
+                    'reports.trial-balance',
+                    'slate',
+                    'يصدر ميزان مراجعة شامل بجميع الحسابات — مدين ودائن — بصيغة Excel',
+                ],
             ];
             
             $colorMap = [
@@ -114,6 +121,7 @@
                 'sky'    => '#0ea5e9',
                 'rose'   => '#f43f5e',
                 'violet' => '#7c3aed',
+                'slate'  => '#64748b',
             ];
         @endphp
 

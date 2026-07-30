@@ -36,7 +36,12 @@
         </div>
         <div class="border-t border-slate-700/50 mt-4 pt-3 flex justify-between text-xs text-slate-400">
             <span>الحد الأدنى: {{ $item->alert_threshold }}</span>
-            <a href="{{ route('inventory.movements', $item) }}" class="text-blue-400 hover:text-blue-300">سجل الحركات ←</a>
+            <div class="flex gap-2">
+                <a href="{{ route('inventory.movements', $item) }}" class="text-blue-400 hover:text-blue-300">سجل الحركات ←</a>
+                <a href="{{ route('reports.export.inventory-movements', $item) }}" class="text-green-400 hover:text-green-300" title="تصدير الحركات">
+                    <i class="fas fa-file-excel"></i>
+                </a>
+            </div>
         </div>
     </div>
     @endforeach

@@ -152,7 +152,7 @@ Route::middleware('auth')->group(function () {
         Route::post('contributors/{contributor}/add-to-share', [ContributorController::class, 'addToShare'])
             ->name('contributors.add-to-share');
         Route::resource('contributor-payments', ContributorPaymentController::class)
-            ->only(['create', 'store', 'destroy']);
+            ->except(['show', 'index']);
         
         Route::get('/api/contributors/active', function() {
             return \App\Models\Contributor::where('is_active', true)
@@ -214,6 +214,7 @@ Route::middleware('auth')->group(function () {
             Route::get('export/monthly-profit', [ReportController::class, 'exportMonthlyProfit'])->name('export.monthly-profit');
             Route::get('export/annual-profit', [ReportController::class, 'exportAnnualProfit'])->name('export.annual-profit');
             Route::get('export/inventory', [ReportController::class, 'exportInventory'])->name('export.inventory');
+            Route::get('export/inventory-movements/{item}', [ReportController::class, 'exportInventoryMovements'])->name('export.inventory-movements');
             Route::get('export/payroll', [ReportController::class, 'exportPayroll'])->name('export.payroll');
             Route::get('export/credits', [ReportController::class, 'exportCredits'])->name('export.credits');
             Route::get('export/expenses', [ReportController::class, 'exportExpenses'])->name('export.expenses');
@@ -224,6 +225,7 @@ Route::middleware('auth')->group(function () {
             Route::get('export/orders', [ReportController::class, 'exportOrders'])->name('export.orders');
             Route::get('neighboring-stations', [ReportController::class, 'neighboringStations'])->name('neighboring-stations');
             Route::get('export/neighboring-stations', [ReportController::class, 'exportNeighboringStations'])->name('export.neighboring-stations');
+            Route::get('trial-balance', [ReportController::class, 'trialBalance'])->name('trial-balance');
         });
     }); // End of accountant-only middleware group
 

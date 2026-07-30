@@ -12,6 +12,11 @@ class Customer extends Model
         'concrete_strength', 'cement_content', 'is_active', 'created_by',
     ];
 
+    protected $attributes = [
+        'cement_balance' => 0,
+        'is_active' => true,
+    ];
+
     protected $casts = [
         'cement_balance'    => 'decimal:3',
         'cement_content'    => 'decimal:3',

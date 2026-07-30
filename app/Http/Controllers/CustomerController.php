@@ -49,6 +49,14 @@ class CustomerController extends Controller
             'cement_content'   => 'nullable|numeric|min:0',
         ]);
 
+        // For complete customers, cement_balance should be 0
+        if ($validated['concrete_type'] === 'complete') {
+            $validated['cement_balance'] = 0;
+        } else {
+            // For operational customers, default to 0 if not provided
+            $validated['cement_balance'] = $validated['cement_balance'] ?? 0;
+        }
+
         $customer = Customer::create($validated);
 
         // If operational customer with cement balance, add to inventory

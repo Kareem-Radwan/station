@@ -42,18 +42,26 @@ class ExpensesExport implements FromCollection, WithHeadings, WithStyles, WithTi
 
         // Calculate total
         $totalAmount = $query->sum('amount');
+        
+        // Get category label
+        $categoryLabel = 'الكل';
+        if ($this->category && $query->isNotEmpty()) {
+            $firstExpense = new Expense(['category' => $this->category]);
+            $categoryLabel = $firstExpense->category_label;
+        }
 
         // Add header rows with totals
         $data = collect([
-            ['تقرير المصروفات', ''],
-            ['', ''],
-            ['من تاريخ', $this->fromDate],
-            ['إلى تاريخ', $this->toDate],
-            ['الفئة', $this->category ? Expense::find($query->first()->id)?->category_label ?? 'الكل' : 'الكل'],
-            ['', ''],
-            ['إجمالي المصروفات', number_format($totalAmount, 2) . ' جنية'],
-            ['', ''],
-            ['', ''],
+            ['تقرير المصروفات', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['من تاريخ', $this->fromDate, '', '', '', '', '', ''],
+            ['إلى تاريخ', $this->toDate, '', '', '', '', '', ''],
+            ['الفئة', $categoryLabel, '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['إجمالي المصروفات', number_format($totalAmount, 2) . ' جنية', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['التاريخ', 'الفئة', 'الوصف', 'المبلغ', 'طريقة الدفع', 'اسم المساهم', 'ملاحظات', 'المسجل بواسطة'],
         ]);
 
         $this->rowCount = $data->count();
@@ -99,7 +107,7 @@ class ExpensesExport implements FromCollection, WithHeadings, WithStyles, WithTi
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
-        // Title styling
+        // Title styling (row 1)
         $sheet->mergeCells('A1:H1');
         $sheet->getStyle('A1')->applyFromArray([
             'font' => ['bold' => true, 'size' => 16],
@@ -118,15 +126,6 @@ class ExpensesExport implements FromCollection, WithHeadings, WithStyles, WithTi
         ]);
 
         // Table header row (row 10)
-        $sheet->setCellValue('A10', 'التاريخ');
-        $sheet->setCellValue('B10', 'الفئة');
-        $sheet->setCellValue('C10', 'الوصف');
-        $sheet->setCellValue('D10', 'المبلغ');
-        $sheet->setCellValue('E10', 'طريقة الدفع');
-        $sheet->setCellValue('F10', 'اسم المساهم');
-        $sheet->setCellValue('G10', 'ملاحظات');
-        $sheet->setCellValue('H10', 'المسجل بواسطة');
-
         $sheet->getStyle('A10:H10')->applyFromArray([
             'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1e3a5f']],

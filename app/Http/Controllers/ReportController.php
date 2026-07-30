@@ -11,6 +11,7 @@ use App\Exports\SupplierBalanceExport;
 use App\Exports\MonthlyProfitExport;
 use App\Exports\AnnualProfitExport;
 use App\Exports\InventoryStatusExport;
+use App\Exports\InventoryMovementsExport;
 use App\Exports\PayrollExport;
 use App\Exports\CreditDueExport;
 use App\Exports\EquipmentCostExport;
@@ -20,6 +21,7 @@ use App\Exports\OrdersExport;
 use App\Exports\SchedulesExport;
 use App\Exports\GeneralReportExport;
 use App\Exports\NeighboringStationsExport;
+use App\Exports\TrialBalanceExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -599,8 +601,20 @@ class ReportController extends Controller
         \App\Models\Credit::checkAndMarkOverdue();
 
         $query = \App\Models\Credit::with('creditable')
+            ->when($request->creditable_type, function ($q, $v) {
+                // Filter by creditable type (customer, supplier, or both)
+                if ($v === 'customer') {
+                    $q->where('creditable_type', 'customer');
+                } elseif ($v === 'supplier') {
+                    $q->where('creditable_type', 'supplier');
+                }
+                // If 'both' or empty, don't filter by type
+            })
             ->when($request->customer_id, function ($q, $v) {
                 $q->where('creditable_type', 'customer')->where('creditable_id', $v);
+            })
+            ->when($request->supplier_id, function ($q, $v) {
+                $q->where('creditable_type', 'supplier')->where('creditable_id', $v);
             })
             ->when($request->status, function ($q, $v) {
                 if ($v === 'active') {
@@ -873,6 +887,19 @@ class ReportController extends Controller
             return Excel::download(
                 new InventoryStatusExport(),
                 'inventory-status-' . now()->format('Y-m-d') . '.xlsx',
+                \Maatwebsite\Excel\Excel::XLSX
+            );
+        } catch (\Exception $e) {
+            return back()->with('error', 'فشل تصدير التقرير: ' . $e->getMessage());
+        }
+    }
+
+    public function exportInventoryMovements(\App\Models\InventoryItem $item)
+    {
+        try {
+            return Excel::download(
+                new InventoryMovementsExport($item),
+                'inventory-movements-' . $item->name_en . '-' . now()->format('Y-m-d') . '.xlsx',
                 \Maatwebsite\Excel\Excel::XLSX
             );
         } catch (\Exception $e) {
@@ -1345,6 +1372,25 @@ class ReportController extends Controller
             );
         } catch (\Exception $e) {
             return back()->with('error', 'فشل تصدير التقرير: ' . $e->getMessage());
+        }
+    }
+
+    // ─── Trial Balance ─────────────────────────────────────────────────
+
+    public function trialBalance(Request $request)
+    {
+        // Direct download — no HTML view needed, just export immediately
+        try {
+            $fromDate = $request->from_date ?? now()->startOfYear()->toDateString();
+            $toDate   = $request->to_date   ?? now()->toDateString();
+
+            return Excel::download(
+                new TrialBalanceExport($fromDate, $toDate),
+                'trial-balance-' . now()->format('Y-m-d') . '.xlsx',
+                \Maatwebsite\Excel\Excel::XLSX
+            );
+        } catch (\Exception $e) {
+            return back()->with('error', 'فشل إنشاء ميزان المراجعة: ' . $e->getMessage());
         }
     }
 }
