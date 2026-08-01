@@ -379,6 +379,43 @@
                         <span>التقارير والإحصائيات</span>
                     </a>
 
+                    {{-- المحاسبة المزدوجة --}}
+                    @if(in_array(auth()->user()->role, ['admin', 'accountant']))
+                        <div class="text-xs text-slate-500 px-3 py-2 uppercase tracking-wider mt-2">
+                            المحاسبة المزدوجة
+                        </div>
+
+                        <a href="{{ route('accounting.trial-balance') }}"
+                            class="sidebar-link {{ str_starts_with($current, 'accounting') ? 'active' : '' }} flex items-center gap-3 px-3 py-2.5 text-slate-300 text-sm">
+                            <i class="fas fa-balance-scale w-4 text-center opacity-70"></i>
+                            <span>ميزان المراجعة</span>
+                        </a>
+
+                        <a href="{{ route('accounting.general-ledger') }}"
+                            class="sidebar-link {{ request()->routeIs('accounting.general-ledger') ? 'active' : '' }} flex items-center gap-3 px-3 py-2.5 text-slate-300 text-sm">
+                            <i class="fas fa-book w-4 text-center opacity-70"></i>
+                            <span>دفتر الأستاذ</span>
+                        </a>
+
+                        <a href="{{ route('accounting.balance-sheet') }}"
+                            class="sidebar-link {{ request()->routeIs('accounting.balance-sheet') ? 'active' : '' }} flex items-center gap-3 px-3 py-2.5 text-slate-300 text-sm">
+                            <i class="fas fa-file-invoice w-4 text-center opacity-70"></i>
+                            <span>الميزانية العمومية</span>
+                        </a>
+
+                        <a href="{{ route('accounting.income-statement') }}"
+                            class="sidebar-link {{ request()->routeIs('accounting.income-statement') ? 'active' : '' }} flex items-center gap-3 px-3 py-2.5 text-slate-300 text-sm">
+                            <i class="fas fa-chart-line w-4 text-center opacity-70"></i>
+                            <span>قائمة الدخل</span>
+                        </a>
+
+                        <a href="{{ route('accounting.journal-book') }}"
+                            class="sidebar-link {{ request()->routeIs('accounting.journal-book') ? 'active' : '' }} flex items-center gap-3 px-3 py-2.5 text-slate-300 text-sm">
+                            <i class="fas fa-scroll w-4 text-center opacity-70"></i>
+                            <span>دفتر اليومية</span>
+                        </a>
+                    @endif
+
                 @endif
 
             </nav>

@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             MixRecipeSeeder::class,
             MaterialDensitySeeder::class,
+            ChartOfAccountsSeeder::class,
         ]);
     }
 }

@@ -31,6 +31,7 @@ use App\Http\Controllers\CustomerPaymentController;
 use App\Http\Controllers\SupplierPaymentController;
 use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\NeighboringStationController;
+use App\Http\Controllers\AccountingController;
 
 // ─── Authentication ───────────────────────────────────────────────────────────
 Route::get('login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -228,5 +229,28 @@ Route::middleware('auth')->group(function () {
             Route::get('trial-balance', [ReportController::class, 'trialBalance'])->name('trial-balance');
         });
     }); // End of accountant-only middleware group
+
+    // ─── Accounting (Double-Entry) ─────────────────────────────────────────────
+    // Reads exclusively from journal_entry_lines — never from business tables.
+    Route::prefix('accounting')
+        ->name('accounting.')
+        ->middleware('role:admin,accountant')
+        ->group(function () {
+            Route::get('trial-balance',   [AccountingController::class, 'trialBalance'])->name('trial-balance');
+            Route::get('general-ledger',  [AccountingController::class, 'generalLedger'])->name('general-ledger');
+            Route::get('balance-sheet',   [AccountingController::class, 'balanceSheet'])->name('balance-sheet');
+            Route::get('income-statement',[AccountingController::class, 'incomeStatement'])->name('income-statement');
+
+            // Rebuild Accounting
+            Route::post('rebuild', [AccountingController::class, 'rebuild'])->name('rebuild');
+
+            // Excel Export Routes
+            Route::get('trial-balance/export',    [AccountingController::class, 'exportTrialBalance'])->name('trial-balance.export');
+            Route::get('general-ledger/export',   [AccountingController::class, 'exportGeneralLedger'])->name('general-ledger.export');
+            Route::get('balance-sheet/export',    [AccountingController::class, 'exportBalanceSheet'])->name('balance-sheet.export');
+            Route::get('income-statement/export', [AccountingController::class, 'exportIncomeStatement'])->name('income-statement.export');
+            Route::get('journal-book',            [AccountingController::class, 'journalBook'])->name('journal-book');
+            Route::get('journal-book/export',     [AccountingController::class, 'exportJournalBook'])->name('journal-book.export');
+        });
 
 }); // End of auth middleware group

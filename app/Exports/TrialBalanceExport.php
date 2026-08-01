@@ -26,7 +26,7 @@ class TrialBalanceExport implements WithMultipleSheets
     public function sheets(): array
     {
         return [
-            new HierarchicalTrialBalanceSheet($this->fromDate, $this->toDate),
+            // new HierarchicalTrialBalanceSheet($this->fromDate, $this->toDate),
             new SectorialTrialBalanceMatrixSheet($this->fromDate, $this->toDate),
         ];
     }
@@ -50,6 +50,7 @@ class TreasuryBankCollector
 
     public function getRows(string $fromDate, string $toDate): array
     {
+        // Calculate movements within the period (for debit/credit columns)
         $cashIn  = (float) DB::table('treasury_transactions')
             ->where('type', 'in')
             ->whereBetween('transaction_date', [$fromDate, $toDate])
@@ -60,7 +61,14 @@ class TreasuryBankCollector
             ->whereBetween('transaction_date', [$fromDate, $toDate])
             ->sum('amount');
 
-        $net = $cashIn - $cashOut;
+        // Calculate the CURRENT cumulative balance (all time) - this matches the treasury page
+        // This shows the actual cash position at the end of the period
+        $currentBalance = (float) DB::table('treasury_transactions')
+            ->where('type', 'in')
+            ->sum('amount') 
+            - (float) DB::table('treasury_transactions')
+            ->where('type', 'out')
+            ->sum('amount');
 
         $rows = [
             [
@@ -68,8 +76,8 @@ class TreasuryBankCollector
                 'name'       => 'الخزينة النقدية الرئيسية',
                 'debit'      => $cashIn,
                 'credit'     => $cashOut,
-                'net_debit'  => $net > 0 ? $net : 0,
-                'net_credit' => $net < 0 ? abs($net) : 0,
+                'net_debit'  => $currentBalance > 0 ? $currentBalance : 0,
+                'net_credit' => $currentBalance < 0 ? abs($currentBalance) : 0,
             ]
         ];
 
@@ -246,8 +254,8 @@ class RentalAgentCollector
                 ->whereBetween('maintenance_date', [$fromDate, $toDate])
                 ->sum('cost');
 
-            $totalCredit = $shiftCost;
-            $totalDebit  = $maintCost;
+            $totalDebit  = 0; // Payments to agent (if tracked separately)
+            $totalCredit = $shiftCost + $maintCost; // Total costs owed
 
             if ($totalCredit > 0 || $totalDebit > 0) {
                 $displayName = ($contract->supplier->name ?? 'وكيل نقل') . ' — ' . $contract->equipment_name . ($contract->car_number ? ' (' . $contract->car_number . ')' : '');
@@ -450,7 +458,7 @@ class ExpenseCollector
 
 class InventoryCollector
 {
-    public function getTitle(): string { return '8. المخزون والمواد الخام'; }
+    public function getTitle(): string { return '8. المخزون والمواد الخام (بيان كمي فقط)'; }
 
     public function getRows(string $fromDate, string $toDate): array
     {
@@ -459,24 +467,26 @@ class InventoryCollector
         $index = 1;
 
         foreach ($items as $item) {
-            $stockIn = (float) DB::table('inventory_movements')
+            // Get quantity movements (not prices)
+            $qtyIn = (float) DB::table('inventory_movements')
                 ->where('inventory_item_id', $item->id)
                 ->where('type', 'in')
                 ->whereBetween('movement_date', [$fromDate, $toDate])
-                ->sum('total_cost');
+                ->sum('quantity');
 
-            $stockOut = (float) DB::table('inventory_movements')
+            $qtyOut = (float) DB::table('inventory_movements')
                 ->where('inventory_item_id', $item->id)
                 ->where('type', 'out')
                 ->whereBetween('movement_date', [$fromDate, $toDate])
-                ->sum('total_cost');
+                ->sum('quantity');
 
-            if ($stockIn == 0 && $stockOut == 0 && $item->current_stock > 0) {
-                $stockIn = (float)$item->current_stock * (float)$item->price_per_unit;
+            // If no movements in period, show current stock as opening balance
+            if ($qtyIn == 0 && $qtyOut == 0 && $item->current_stock > 0) {
+                $qtyIn = (float)$item->current_stock;
             }
 
-            if ($stockIn > 0 || $stockOut > 0 || $item->current_stock > 0) {
-                $net = $stockIn - $stockOut;
+            if ($qtyIn > 0 || $qtyOut > 0 || $item->current_stock > 0) {
+                $netQty = $qtyIn - $qtyOut;
                 
                 // Determine stock status
                 $stockStatus = $item->isBelowAlert() ? 'منخفض ⚠️' : 'عادي ✓';
@@ -484,11 +494,11 @@ class InventoryCollector
                 
                 $rows[] = [
                     'code'       => '1310-' . str_pad($index++, 3, '0', STR_PAD_LEFT),
-                    'name'       => 'مخزن ' . $item->name_ar . ' — الكمية: ' . $currentQty . ' ' . $item->unit . ' (' . $stockStatus . ')',
-                    'debit'      => $stockIn,
-                    'credit'     => $stockOut,
-                    'net_debit'  => $net > 0 ? $net : 0,
-                    'net_credit' => $net < 0 ? abs($net) : 0,
+                    'name'       => 'مخزن ' . $item->name_ar . ' — الرصيد: ' . $currentQty . ' ' . $item->unit . ' (' . $stockStatus . ')',
+                    'debit'      => $qtyIn > 0 ? number_format($qtyIn, 3) . ' ' . $item->unit : '',
+                    'credit'     => $qtyOut > 0 ? number_format($qtyOut, 3) . ' ' . $item->unit : '',
+                    'net_debit'  => $netQty > 0 ? number_format($netQty, 3) . ' ' . $item->unit : '',
+                    'net_credit' => $netQty < 0 ? number_format(abs($netQty), 3) . ' ' . $item->unit : '',
                 ];
             }
         }
@@ -568,6 +578,7 @@ class PayrollCollector
         $payrolls = DB::table('payroll')
             ->join('employees', 'payroll.employee_id', '=', 'employees.id')
             ->select(
+                'employees.id as employee_id',
                 'employees.name',
                 DB::raw('SUM(payroll.base_salary) as total_base'),
                 DB::raw('SUM(payroll.overtime_pay) as total_overtime'),
@@ -587,15 +598,23 @@ class PayrollCollector
         foreach ($payrolls as $p) {
             $gross = (float)$p->total_base + (float)$p->total_overtime;
             $ded   = (float)$p->total_deductions;
-            $net   = $gross - $ded;
+            
+            // Get paid borrows for this employee (all time)
+            $paidBorrows = (float) DB::table('employee_borrows')
+                ->where('employee_id', $p->employee_id)
+                ->sum(DB::raw('amount - remaining_amount'));
+            
+            // Net payroll = gross - deductions - paid borrows
+            $netAfterDeductions = $gross - $ded;
+            $netAfterBorrows = $netAfterDeductions - $paidBorrows;
 
             $rows[] = [
                 'code'       => '5210-' . str_pad($index++, 3, '0', STR_PAD_LEFT),
                 'name'       => 'راتب ' . $p->name,
                 'debit'      => $gross,
-                'credit'     => $ded,
-                'net_debit'  => $net > 0 ? $net : 0,
-                'net_credit' => $net < 0 ? abs($net) : 0,
+                'credit'     => $ded + $paidBorrows,  // Total deductions including paid borrows
+                'net_debit'  => $netAfterBorrows > 0 ? $netAfterBorrows : 0,
+                'net_credit' => $netAfterBorrows < 0 ? abs($netAfterBorrows) : 0,
             ];
         }
 
@@ -733,6 +752,9 @@ class HierarchicalTrialBalanceSheet implements
             $subCredit = 0;
             $subNetDeb = 0;
             $subNetCre = 0;
+            
+            // Check if this is the inventory collector (quantities only, not included in totals)
+            $isInventoryCollector = ($collector instanceof InventoryCollector);
 
             foreach ($catRows as $r) {
                 $out[] = [
@@ -746,29 +768,45 @@ class HierarchicalTrialBalanceSheet implements
                 $this->styleMap[$rowIdx] = 'data';
                 $rowIdx++;
 
-                $subDebit  += (float)$r['debit'];
-                $subCredit += (float)$r['credit'];
-                $subNetDeb += (float)$r['net_debit'];
-                $subNetCre += (float)$r['net_credit'];
+                // Only add to totals if NOT inventory (inventory shows quantities, not amounts)
+                if (!$isInventoryCollector) {
+                    $subDebit  += (float)$r['debit'];
+                    $subCredit += (float)$r['credit'];
+                    $subNetDeb += (float)$r['net_debit'];
+                    $subNetCre += (float)$r['net_credit'];
+                }
             }
 
-            // Category Subtotal Row
-            $out[] = [
-                '',
-                'إجمالي ' . $collector->getTitle(),
-                number_format($subDebit, 2),
-                number_format($subCredit, 2),
-                number_format($subNetDeb, 2),
-                number_format($subNetCre, 2),
-            ];
+            // Category Subtotal Row - show note for inventory
+            if ($isInventoryCollector) {
+                $out[] = [
+                    '',
+                    'إجمالي ' . $collector->getTitle() . ' — بيان كمي فقط (غير مدرج في الإجمالي المالي)',
+                    '—',
+                    '—',
+                    '—',
+                    '—',
+                ];
+            } else {
+                $out[] = [
+                    '',
+                    'إجمالي ' . $collector->getTitle(),
+                    number_format($subDebit, 2),
+                    number_format($subCredit, 2),
+                    number_format($subNetDeb, 2),
+                    number_format($subNetCre, 2),
+                ];
+            }
             $this->styleMap[$rowIdx] = 'subtotal';
             $rowIdx++;
 
-            // Accumulate Grand Totals
-            $grandDebitMovements  += $subDebit;
-            $grandCreditMovements += $subCredit;
-            $grandNetDebit        += $subNetDeb;
-            $grandNetCredit       += $subNetCre;
+            // Accumulate Grand Totals (excluding inventory)
+            if (!$isInventoryCollector) {
+                $grandDebitMovements  += $subDebit;
+                $grandCreditMovements += $subCredit;
+                $grandNetDebit        += $subNetDeb;
+                $grandNetCredit       += $subNetCre;
+            }
         }
 
         // Blank separator
@@ -957,6 +995,8 @@ class SectorialTrialBalanceMatrixSheet implements
     \Maatwebsite\Excel\Concerns\WithEvents,
     \Maatwebsite\Excel\Concerns\WithCustomCsvSettings
 {
+    private array $styleMap = [];
+    
     public function __construct(private string $fromDate, private string $toDate) {}
 
     public function getCsvSettings(): array { return ['use_bom' => true, 'output_encoding' => 'UTF-8']; }
@@ -967,12 +1007,294 @@ class SectorialTrialBalanceMatrixSheet implements
     {
         return [
             'A' => 26, 'B' => 16,
-            'C' => 26, 'D' => 16,
-            'E' => 26, 'F' => 16,
+            'C' => 26, 'D' => 14, 'E' => 14, 'F' => 14,
             'G' => 26, 'H' => 16,
-            'I' => 26, 'J' => 16,
-            'K' => 26, 'L' => 16,
+            'I' => 26, 'J' => 16, 'K' => 16,
+            'L' => 26, 'M' => 16, 'N' => 16,
+            'O' => 26, 'P' => 16,
+            'Q' => 26, 'R' => 16,
+            'S' => 26, 'T' => 16,
+            'U' => 26, 'V' => 16,
         ];
+    }
+
+    private function getDetailedCustomerRows(string $fd, string $td): array
+    {
+        $customers = Customer::orderBy('name')->get();
+        $rows = [];
+        
+        foreach ($customers as $customer) {
+            // Get total orders (sales - what they owe us - increases receivables)
+            $orders = (float) DB::table('orders')
+                ->where('customer_id', $customer->id)
+                ->where('status', '!=', 'cancelled')
+                ->whereBetween('delivery_date', [$fd, $td])
+                ->sum('total_amount');
+            
+            // Get cash paid on orders (reduces debt immediately)
+            $cashOnOrders = (float) DB::table('orders')
+                ->where('customer_id', $customer->id)
+                ->where('status', '!=', 'cancelled')
+                ->whereBetween('delivery_date', [$fd, $td])
+                ->sum('cash_amount');
+            
+            // Get all payments received from customer (reduces their debt)
+            $paymentsReceived = (float) DB::table('customer_payments')
+                ->where('customer_id', $customer->id)
+                ->where('amount', '>', 0)
+                ->whereBetween('payment_date', [$fd, $td])
+                ->sum('amount');
+            
+            // Total payments = cash on orders + direct payments
+            $totalPayments = $cashOnOrders + $paymentsReceived;
+            
+            // Net orders = orders - cash paid immediately
+            $netOrders = $orders - $cashOnOrders;
+            
+            // Remaining debt = net orders - payments received
+            $remainingDebt = $netOrders - $paymentsReceived;
+            
+            // If no activity in period, calculate from all-time data
+            if ($orders == 0 && $paymentsReceived == 0) {
+                // Get outstanding balance using the model method
+                $outstandingBalance = $customer->getOutstandingBalance();
+                $remainingDebt = max(0, $outstandingBalance);
+                $totalPayments = 0; // No payments in this period
+            }
+            
+            // Always show all customers
+            $rows[] = [
+                'name' => $customer->name,
+                'payments' => $totalPayments,        // صافي الرصيد (what they paid)
+                'credits' => max(0, $remainingDebt)  // ديون عملاء (what they still owe)
+            ];
+        }
+        
+        return $rows;
+    }
+    
+    private function getDetailedSupplierRows(string $fd, string $td): array
+    {
+        $suppliers = Supplier::orderBy('name')->get();
+        $rows = [];
+        
+        foreach ($suppliers as $supplier) {
+            // Get total purchases (what we owe them - increases debt)
+            $purchases = (float) DB::table('supplier_purchases')
+                ->where('supplier_id', $supplier->id)
+                ->whereBetween('purchase_date', [$fd, $td])
+                ->sum('total_amount');
+            
+            // Get cash paid on purchases (reduces debt immediately)
+            $cashOnPurchases = (float) DB::table('supplier_purchases')
+                ->where('supplier_id', $supplier->id)
+                ->whereBetween('purchase_date', [$fd, $td])
+                ->sum('cash_amount');
+            
+            // Get payments made to supplier (reduces debt)
+            $paymentsMade = (float) DB::table('supplier_payments')
+                ->where('supplier_id', $supplier->id)
+                ->where('payment_type', 'payment')
+                ->whereBetween('payment_date', [$fd, $td])
+                ->sum('amount');
+            
+            // Get deductions (we take back from them - increases our credit/their debt to us)
+            $deductions = (float) DB::table('supplier_payments')
+                ->where('supplier_id', $supplier->id)
+                ->where('payment_type', 'deduction')
+                ->whereBetween('payment_date', [$fd, $td])
+                ->sum('amount');
+            
+            // Calculate current debt from database (what we currently owe them)
+            $currentDebt = (float) $supplier->balance;
+            
+            // Total payments = cash on purchases + direct payments
+            $totalPayments = $cashOnPurchases + $paymentsMade;
+            
+            // Net purchases = purchases - cash paid immediately
+            $netPurchases = $purchases - $cashOnPurchases;
+            
+            // Remaining debt = net purchases - payments made + deductions
+            // (deductions increase what they owe us, so we add them)
+            $remainingDebt = $netPurchases - $paymentsMade + $deductions;
+            
+            // If no activity in period, use current balance from database
+            if ($purchases == 0 && $paymentsMade == 0 && $deductions == 0 && $currentDebt != 0) {
+                $remainingDebt = $currentDebt;
+                $totalPayments = 0; // We'll show the debt but no payments in this period
+            }
+            
+            // Always show all suppliers
+            $rows[] = [
+                'name' => $supplier->name,
+                'payments' => $totalPayments,     // صافي الرصيد (what we paid)
+                'credits' => max(0, $remainingDebt) // ديون موردين (what we still owe)
+            ];
+        }
+        
+        return $rows;
+    }
+    
+    private function getEmployeeBorrowAndPayrollRows(string $fd, string $td): array
+    {
+        $employees = Employee::orderBy('name')->get();
+        $borrowRows = [];
+        $payrollRows = [];
+        
+        foreach ($employees as $employee) {
+            // Get total borrows amount
+            $totalBorrows = (float) DB::table('employee_borrows')
+                ->where('employee_id', $employee->id)
+                ->sum('amount');
+            
+            // Get remaining (unpaid) borrows
+            $remainingBorrows = (float) DB::table('employee_borrows')
+                ->where('employee_id', $employee->id)
+                ->sum('remaining_amount');
+            
+            // Paid amount = total - remaining
+            $paidBorrows = $totalBorrows - $remainingBorrows;
+            
+            if ($totalBorrows > 0) {
+                $borrowRows[] = [
+                    'name' => 'سلفة: ' . $employee->name,
+                    'employee_id' => $employee->id,
+                    'total' => $totalBorrows,
+                    'paid' => $paidBorrows,
+                    'remaining' => $remainingBorrows
+                ];
+            }
+        }
+        
+        // Get payroll separately (all employees)
+        // Build a map of employee_id => paid_borrows for quick lookup
+        $employeePaidBorrows = [];
+        foreach ($borrowRows as $borrow) {
+            $employeePaidBorrows[$borrow['employee_id']] = $borrow['paid'];
+        }
+        
+        foreach ($employees as $employee) {
+            $fromYear  = (int) date('Y', strtotime($fd));
+            $fromMonth = (int) date('m', strtotime($fd));
+            $toYear    = (int) date('Y', strtotime($td));
+            $toMonth   = (int) date('m', strtotime($td));
+            
+            $grossPayroll = (float) DB::table('payroll')
+                ->where('employee_id', $employee->id)
+                ->where('status', 'paid')
+                ->whereRaw('(period_year * 100 + period_month) >= ?', [$fromYear * 100 + $fromMonth])
+                ->whereRaw('(period_year * 100 + period_month) <= ?', [$toYear * 100 + $toMonth])
+                ->sum(DB::raw('base_salary + overtime_pay - total_deductions'));
+            
+            // Net payroll = gross payroll - paid borrows for this employee
+            $paidBorrowsForEmployee = $employeePaidBorrows[$employee->id] ?? 0;
+            $netPayroll = $grossPayroll - $paidBorrowsForEmployee;
+            
+            if ($grossPayroll > 0) {
+                $payrollRows[] = [
+                    'name' => 'راتب: ' . $employee->name,
+                    'payroll' => $netPayroll
+                ];
+            }
+        }
+        
+        return [
+            'borrows' => $borrowRows,
+            'payrolls' => $payrollRows
+        ];
+    }
+    
+    private function getInventoryRows(string $fd, string $td): array
+    {
+        $items = InventoryItem::orderBy('name_ar')->get();
+        $rows = [];
+        
+        foreach ($items as $item) {
+            if ($item->current_stock > 0) {
+                $stockStatus = $item->isBelowAlert() ? ' ⚠️' : ' ✓';
+                $rows[] = [
+                    'name' => $item->name_ar,
+                    'detail' => number_format((float)$item->current_stock, 3) . ' ' . $item->unit . $stockStatus,
+                    'unit' => $item->unit,
+                    'qty' => (float)$item->current_stock,
+                ];
+            }
+        }
+        
+        return $rows;
+    }
+    
+    private function getNeighboringStationRows(string $fd, string $td): array
+    {
+        $stations = NeighboringStation::orderBy('name')->get();
+        $rows = [];
+        
+        foreach ($stations as $station) {
+            $outgoing = (float) DB::table('neighboring_station_transactions')
+                ->where('neighboring_station_id', $station->id)
+                ->where('direction', 'outgoing')
+                ->whereBetween('transaction_date', [$fd, $td])
+                ->sum('amount');
+
+            $incoming = (float) DB::table('neighboring_station_transactions')
+                ->where('neighboring_station_id', $station->id)
+                ->where('direction', 'incoming')
+                ->whereBetween('transaction_date', [$fd, $td])
+                ->sum('amount');
+
+            $paidIncoming = (float) DB::table('neighboring_station_transactions')
+                ->where('neighboring_station_id', $station->id)
+                ->where('direction', 'incoming')
+                ->whereBetween('transaction_date', [$fd, $td])
+                ->sum('paid_amount');
+
+            $paidOutgoing = (float) DB::table('neighboring_station_transactions')
+                ->where('neighboring_station_id', $station->id)
+                ->where('direction', 'outgoing')
+                ->whereBetween('transaction_date', [$fd, $td])
+                ->sum('paid_amount');
+
+            $netBalance = ($outgoing + $paidIncoming) - ($incoming + $paidOutgoing);
+            
+            $rows[] = [
+                'name' => $station->name,
+                'balance' => $netBalance
+            ];
+        }
+        
+        return $rows;
+    }
+    
+    private function getRevenueRows(string $fd, string $td): array
+    {
+        $concreteSales = (float) DB::table('orders')
+            ->where('status', '!=', 'cancelled')
+            ->whereBetween('delivery_date', [$fd, $td])
+            ->sum('total_amount');
+
+        $otherIncome = (float) DB::table('treasury_transactions')
+            ->where('type', 'in')
+            ->whereIn('category', ['income', 'refund', 'other'])
+            ->whereBetween('transaction_date', [$fd, $td])
+            ->sum('amount');
+
+        return [
+            ['name' => 'مبيعات الخرسانة', 'amount' => $concreteSales],
+            ['name' => 'إيرادات أخرى', 'amount' => $otherIncome],
+        ];
+    }
+    
+    private function getTreasuryNetBalance(string $fd, string $td): float
+    {
+        // Get the CURRENT cumulative treasury balance (all time) - matches treasury page
+        $currentBalance = (float) DB::table('treasury_transactions')
+            ->where('type', 'in')
+            ->sum('amount') 
+            - (float) DB::table('treasury_transactions')
+            ->where('type', 'out')
+            ->sum('amount');
+
+        return $currentBalance;
     }
 
     public function array(): array
@@ -981,75 +1303,270 @@ class SectorialTrialBalanceMatrixSheet implements
         $td = $this->toDate;
 
         $contributors = (new ContributorCollector())->getRows($fd, $td);
-        $expenses     = (new ExpenseCollector())->getRows($fd, $td);
-        $suppliers    = (new SupplierCollector())->getRows($fd, $td);
-        $customers    = (new CustomerCollector())->getRows($fd, $td);
-        $rentals      = (new RentalAgentCollector())->getRows($fd, $td);
-        $banks        = (new TreasuryBankCollector())->getRows($fd, $td);
+        $expensesBase = (new ExpenseCollector())->getRows($fd, $td);
+        $employeeData = $this->getEmployeeBorrowAndPayrollRows($fd, $td);
+        $employeeBorrows = $employeeData['borrows'];
+        $employeePayrolls = $employeeData['payrolls'];
+        $expenses = $expensesBase; // Only expenses in أخرى section now
+        $suppliers = $this->getDetailedSupplierRows($fd, $td);
+        $customers = $this->getDetailedCustomerRows($fd, $td);
+        $rentals = (new RentalAgentCollector())->getRows($fd, $td);
+        $banks = (new TreasuryBankCollector())->getRows($fd, $td);
+        $inventory = $this->getInventoryRows($fd, $td);
+        $neighboringStations = $this->getNeighboringStationRows($fd, $td);
+        $revenueRows = $this->getRevenueRows($fd, $td);
+        
+        // Get treasury net balance using the helper method for consistency
+        $treasuryNetBalance = $this->getTreasuryNetBalance($fd, $td);
 
         $out = [];
+        $rowIdx = 1;
 
         // Title Header
-        $out[] = ['شركة نيو سوليد اب / محطة الخرسانة الجاهزة', '', '', '', '', '', '', '', '', '', '', ''];
-        $out[] = ['ميزان المراجعة القطاعي الإجمالي — ' . $fd . ' إلى ' . $td, '', '', '', '', '', '', '', '', '', '', ''];
-        $out[] = ['', '', '', '', '', '', '', '', '', '', '', ''];
+        $out[] = ['شركة نيو سوليد اب / محطة الخرسانة الجاهزة', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $this->styleMap[$rowIdx++] = 'title';
+        
+        $out[] = ['ميزان المراجعة القطاعي الإجمالي — ' . $fd . ' إلى ' . $td, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $this->styleMap[$rowIdx++] = 'subtitle';
+        
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $rowIdx++;
 
         // Category Headers Row
         $out[] = [
             'المساهمين', '',
-            'أخرى / سلف ومصروفات', '',
-            'موردين', '',
-            'عملاء', '',
+            'أخرى / سلف ومصروفات', '', '', '',
+            'رواتب الموظفين', '',
+            'موردين', '', '',
+            'عملاء', '', '',
             'وكلاء نقل', '',
             'بنوك وخزينة', '',
+            'محطات مجاورة', '',
+            'إيرادات', '',
         ];
+        $this->styleMap[$rowIdx++] = 'category_header';
 
         // Column Headings Row
         $out[] = [
             'اسم المساهم', 'صافي الرصيد',
-            'اسم البيان / الحساب', 'صافي الرصيد',
-            'اسم المورد', 'صافي الرصيد',
-            'اسم العميل', 'صافي الرصيد',
+            'الموظف / البيان', 'إجمالي السلفة', 'المدفوع', 'الباقي',
+            'اسم الموظف', 'الراتب المدفوع',
+            'اسم المورد', 'صافي الرصيد', 'ديون موردين',
+            'اسم العميل', 'صافي الرصيد', 'ديون عملاء',
             'وكيل النقل', 'صافي الرصيد',
             'الخزينة / البنك', 'صافي الرصيد',
+            'المحطة', 'صافي الرصيد',
+            'نوع الإيراد', 'المبلغ',
         ];
+        $this->styleMap[$rowIdx++] = 'column_header';
 
         $maxCount = max(
             count($contributors),
             count($expenses),
+            count($employeeBorrows),
+            count($employeePayrolls),
             count($suppliers),
             count($customers),
             count($rentals),
-            count($banks)
+            count($banks),
+            count($neighboringStations),
+            count($revenueRows)
         );
 
         for ($i = 0; $i < $maxCount; $i++) {
             $cRow = $contributors[$i] ?? null;
-            $eRow = $expenses[$i]     ?? null;
-            $sRow = $suppliers[$i]    ?? null;
-            $uRow = $customers[$i]    ?? null;
-            $rRow = $rentals[$i]      ?? null;
-            $bRow = $banks[$i]        ?? null;
+            $eRow = $expenses[$i] ?? null;
+            $bRow = $employeeBorrows[$i] ?? null;
+            $pRow = $employeePayrolls[$i] ?? null;
+            $sRow = $suppliers[$i] ?? null;
+            $uRow = $customers[$i] ?? null;
+            $rRow = $rentals[$i] ?? null;
+            $tRow = $banks[$i] ?? null;
+            $nRow = $neighboringStations[$i] ?? null;
+            $revRow = $revenueRows[$i] ?? null;
+
+            // Handle expenses - check if it's from ExpenseCollector
+            if ($eRow) {
+                if (isset($eRow['net_debit']) && isset($eRow['net_credit'])) {
+                    $eName = $eRow['name'];
+                    $eTotal = $eRow['net_debit'];
+                    $ePaid = $eRow['net_credit'];
+                    $eRemaining = $eRow['net_debit'] - $eRow['net_credit'];
+                } else {
+                    $eName = '';
+                    $eTotal = 0;
+                    $ePaid = 0;
+                    $eRemaining = 0;
+                }
+            } else {
+                $eName = '';
+                $eTotal = 0;
+                $ePaid = 0;
+                $eRemaining = 0;
+            }
 
             $out[] = [
-                $cRow ? $cRow['name'] : '', $cRow ? fmtTbVal($cRow['net_credit'] - $cRow['net_debit']) : '',
-                $eRow ? $eRow['name'] : '', $eRow ? fmtTbVal($eRow['net_debit'] - $eRow['net_credit']) : '',
-                $sRow ? $sRow['name'] : '', $sRow ? fmtTbVal($sRow['net_credit'] - $sRow['net_debit']) : '',
-                $uRow ? $uRow['name'] : '', $uRow ? fmtTbVal($uRow['net_debit'] - $uRow['net_credit']) : '',
-                $rRow ? $rRow['name'] : '', $rRow ? fmtTbVal($rRow['net_credit'] - $rRow['net_debit']) : '',
-                $bRow ? $bRow['name'] : '', $bRow ? fmtTbVal($bRow['net_debit'] - $bRow['net_credit']) : '',
+                $cRow ? $cRow['name'] : '', 
+                $cRow ? number_format($cRow['net_credit'] - $cRow['net_debit'], 2) : '',
+                $bRow ? $bRow['name'] : $eName,
+                $bRow ? number_format($bRow['total'], 2) : number_format($eTotal, 2),
+                $bRow ? number_format($bRow['paid'], 2) : number_format($ePaid, 2),
+                $bRow ? number_format($bRow['remaining'], 2) : number_format($eRemaining, 2),
+                $pRow ? $pRow['name'] : '',
+                $pRow ? number_format($pRow['payroll'], 2) : '',
+                $sRow ? $sRow['name'] : '',
+                $sRow ? number_format($sRow['payments'], 2) : '',
+                $sRow ? number_format($sRow['credits'], 2) : '',
+                $uRow ? $uRow['name'] : '',
+                $uRow ? number_format($uRow['payments'], 2) : '',
+                $uRow ? number_format($uRow['credits'], 2) : '',
+                $rRow ? $rRow['name'] : '',
+                $rRow ? number_format($rRow['net_credit'] - $rRow['net_debit'], 2) : '',
+                $tRow ? $tRow['name'] : '',
+                $tRow ? number_format($tRow['net_debit'] - $tRow['net_credit'], 2) : '',
+                $nRow ? $nRow['name'] : '',
+                $nRow ? number_format($nRow['balance'], 2) : '',
+                $revRow ? $revRow['name'] : '',
+                $revRow ? number_format($revRow['amount'], 2) : '',
             ];
+            $this->styleMap[$rowIdx++] = 'data';
         }
 
+        // Blank separator
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $rowIdx++;
+
         // Grand Totals Row
+        $contribTotal = array_sum(array_map(fn($r) => $r['net_credit'] - $r['net_debit'], $contributors));
+        
+        $borrowsTotal = array_sum(array_map(fn($r) => $r['total'], $employeeBorrows));
+        $borrowsPaid = array_sum(array_map(fn($r) => $r['paid'], $employeeBorrows));
+        $borrowsRemaining = array_sum(array_map(fn($r) => $r['remaining'], $employeeBorrows));
+        
+        $payrollsTotal = array_sum(array_map(fn($r) => $r['payroll'], $employeePayrolls));
+        
+        $expensesTotal = 0;
+        foreach ($expenses as $e) {
+            if (isset($e['net_debit']) && isset($e['net_credit'])) {
+                $expensesTotal += $e['net_debit'] - $e['net_credit'];
+            }
+        }
+        
+        // Total for أخرى / سلف ومصروفات section - should include expenses in "الباقي"
+        $otherSectionTotal = $borrowsTotal + $expensesTotal;
+        $otherSectionPaid = $borrowsPaid;
+        $otherSectionRemaining = $borrowsRemaining + $expensesTotal;
+        
+        $suppliersPayments = array_sum(array_map(fn($r) => $r['payments'], $suppliers));
+        $suppliersCredits = array_sum(array_map(fn($r) => $r['credits'], $suppliers));
+        $customersPayments = array_sum(array_map(fn($r) => $r['payments'], $customers));
+        $customersCredits = array_sum(array_map(fn($r) => $r['credits'], $customers));
+        $rentalsTotal = array_sum(array_map(fn($r) => $r['net_credit'] - $r['net_debit'], (new RentalAgentCollector())->getRows($fd, $td)));
+        
+        // Treasury: Get the current cumulative balance (already calculated correctly in TreasuryBankCollector)
+        $treasuryRows = (new TreasuryBankCollector())->getRows($fd, $td);
+        $banksTotal = array_sum(array_map(fn($r) => $r['net_debit'] - $r['net_credit'], $treasuryRows));
+        
+        $neighboringTotal = array_sum(array_map(fn($r) => $r['balance'], $neighboringStations));
+        $revenueTotal = array_sum(array_map(fn($r) => $r['amount'], $revenueRows));
+
         $out[] = [
-            'Grand Total', number_format(array_sum(array_map(fn($r) => $r['net_credit'] - $r['net_debit'], $contributors)), 2),
-            'Grand Total', number_format(array_sum(array_map(fn($r) => $r['net_debit'] - $r['net_credit'], $expenses)), 2),
-            'Grand Total', number_format(array_sum(array_map(fn($r) => $r['net_credit'] - $r['net_debit'], $suppliers)), 2),
-            'Grand Total', number_format(array_sum(array_map(fn($r) => $r['net_debit'] - $r['net_credit'], $customers)), 2),
-            'Grand Total', number_format(array_sum(array_map(fn($r) => $r['net_credit'] - $r['net_debit'], $rentals)), 2),
-            'Grand Total', number_format(array_sum(array_map(fn($r) => $r['net_debit'] - $r['net_credit'], $banks)), 2),
+            'الإجمالي', number_format($contribTotal, 2),
+            'الإجمالي', number_format($otherSectionTotal, 2), number_format($otherSectionPaid, 2), number_format($otherSectionRemaining, 2),
+            'الإجمالي', number_format($payrollsTotal, 2),
+            'الإجمالي', number_format($suppliersPayments, 2), number_format($suppliersCredits, 2),
+            'الإجمالي', number_format($customersPayments, 2), number_format($customersCredits, 2),
+            'الإجمالي', number_format($rentalsTotal, 2),
+            'الإجمالي', number_format($banksTotal, 2),
+            'الإجمالي', number_format($neighboringTotal, 2),
+            'الإجمالي', number_format($revenueTotal, 2),
         ];
+        $this->styleMap[$rowIdx++] = 'grand_total';
+
+        // Add spacing
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $rowIdx += 2;
+
+        // Summary Section (like the image)
+        $out[] = ['الملخص المالي (الصافي)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $this->styleMap[$rowIdx++] = 'summary_title';
+        
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $rowIdx++;
+
+        // Calculate summary values
+        $treasuryNet = $treasuryNetBalance; // Use consistent treasury calculation
+        $customerPaymentsNet = $customersPayments;
+        $customerDebtsNet = $customersCredits;
+        $receiptsNet = 0;
+        $banksAccountsNet = 0;
+        $supplierPaymentsNet = $suppliersPayments;
+        $supplierDebtsNet = $suppliersCredits;
+        $rentalAgentsNet = $rentalsTotal;
+        $contributorsNet = $contribTotal;
+        $borrowsNet = $borrowsRemaining;
+        $payrollsNet = $payrollsTotal;
+        $otherNet = $expensesTotal;
+        $neighboringStationsNet = $neighboringTotal;
+        $revenueNet = $revenueTotal;
+        
+        $grandNet = $treasuryNet + $customerPaymentsNet - $customerDebtsNet + $receiptsNet + $banksAccountsNet 
+                    - $supplierPaymentsNet - $supplierDebtsNet - $rentalAgentsNet + $contributorsNet 
+                    - $borrowsNet - $payrollsNet - $otherNet + $neighboringStationsNet + $revenueNet;
+
+        $summaryData = [
+            ['النقدية', $treasuryNet],
+            ['العملاء (دفعات)', $customerPaymentsNet],
+            ['العملاء (ديون)', -$customerDebtsNet],
+            ['أوراق قبض', $receiptsNet],
+            ['البنوك', $banksAccountsNet],
+            ['الموردين (دفعات)', -$supplierPaymentsNet],
+            ['الموردين (ديون)', -$supplierDebtsNet],
+            ['وكلاء النقل', -$rentalAgentsNet],
+            ['المحطات المجاورة', $neighboringStationsNet],
+            ['المساهمين', $contributorsNet],
+            ['سلف الموظفين (الباقي)', -$borrowsNet],
+            ['رواتب الموظفين', -$payrollsNet],
+            ['أخرى', -$otherNet],
+            ['الإيرادات', $revenueNet],
+        ];
+
+        foreach ($summaryData as $item) {
+            $value = $item[1];
+            if ($value == 0) continue;
+            $formatted = 'ج.م ' . number_format(abs($value), 2) . ($value < 0 ? '-' : '');
+            $out[] = [$formatted, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', $item[0], ''];
+            $this->styleMap[$rowIdx++] = $value < 0 ? 'summary_negative' : 'summary_positive';
+        }
+
+        // Grand total line
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $rowIdx++;
+        
+        $netFormatted = 'ج.م ' . number_format(abs($grandNet), 2) . ($grandNet < 0 ? '-' : '');
+        $out[] = [$netFormatted, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'الصافي', ''];
+        $this->styleMap[$rowIdx++] = 'summary_grand';
+
+        // Inventory Section
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $out[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $rowIdx += 2;
+        
+        $out[] = ['المخزون — حالة المواد (بيان كمي فقط)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $this->styleMap[$rowIdx++] = 'inventory_title';
+        
+        $out[] = ['الحالة', '', 'اسم المادة', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $this->styleMap[$rowIdx++] = 'inventory_header';
+
+        foreach ($inventory as $inv) {
+            $out[] = [$inv['detail'], '', $inv['name'], '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+            $this->styleMap[$rowIdx++] = 'inventory_data';
+        }
+
+        $totalItems = count($inventory);
+        $out[] = ['إجمالي عدد المواد: ' . $totalItems . ' مادة', '', 'بيان كمي فقط (غير مدرج في الإجمالي المالي)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+        $this->styleMap[$rowIdx++] = 'inventory_total';
 
         return $out;
     }
@@ -1058,64 +1575,166 @@ class SectorialTrialBalanceMatrixSheet implements
     {
         $sheet->setRightToLeft(true);
 
-        $sheet->mergeCells('A1:L1');
-        $sheet->getStyle('A1')->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 16, 'color' => ['rgb' => '1F3864']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-        ]);
+        foreach ($this->styleMap as $row => $type) {
+            switch ($type) {
+                case 'title':
+                    $sheet->mergeCells("A{$row}:V{$row}");
+                    $sheet->getStyle("A{$row}")->applyFromArray([
+                        'font'      => ['bold' => true, 'size' => 16, 'color' => ['rgb' => '1F3864']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                    ]);
+                    break;
 
-        $sheet->mergeCells('A2:L2');
-        $sheet->getStyle('A2')->applyFromArray([
-            'font'      => ['italic' => true, 'size' => 11, 'color' => ['rgb' => '444444']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-        ]);
+                case 'subtitle':
+                    $sheet->mergeCells("A{$row}:V{$row}");
+                    $sheet->getStyle("A{$row}")->applyFromArray([
+                        'font'      => ['italic' => true, 'size' => 11, 'color' => ['rgb' => '444444']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                    ]);
+                    break;
 
-        // Merge sector top headers
-        $sheet->mergeCells('A4:B4');
-        $sheet->mergeCells('C4:D4');
-        $sheet->mergeCells('E4:F4');
-        $sheet->mergeCells('G4:H4');
-        $sheet->mergeCells('I4:J4');
-        $sheet->mergeCells('K4:L4');
+                case 'category_header':
+                    // Merge sector top headers
+                    $sheet->mergeCells("A{$row}:B{$row}");      // المساهمين
+                    $sheet->mergeCells("C{$row}:F{$row}");      // أخرى / سلف ومصروفات
+                    $sheet->mergeCells("G{$row}:H{$row}");      // رواتب الموظفين
+                    $sheet->mergeCells("I{$row}:K{$row}");      // موردين
+                    $sheet->mergeCells("L{$row}:N{$row}");      // عملاء
+                    $sheet->mergeCells("O{$row}:P{$row}");      // وكلاء نقل
+                    $sheet->mergeCells("Q{$row}:R{$row}");      // بنوك وخزينة
+                    $sheet->mergeCells("S{$row}:T{$row}");      // محطات مجاورة
+                    $sheet->mergeCells("U{$row}:V{$row}");      // إيرادات
+                    
+                    $sheet->getStyle("A{$row}:V{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => '1F3864']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                        'borders' => ['bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => '1F3864']]],
+                    ]);
+                    break;
 
-        $sheet->getStyle('A4:L4')->applyFromArray([
-            'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => '1F3864']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-            'borders' => ['bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => '1F3864']]],
-        ]);
+                case 'column_header':
+                    $sheet->getStyle("A{$row}:V{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 10, 'color' => ['rgb' => 'FFFFFF']],
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '2E75B6']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                    ]);
+                    break;
 
-        // Table subheadings
-        $sheet->getStyle('A5:L5')->applyFromArray([
-            'font' => ['bold' => true, 'size' => 10, 'color' => ['rgb' => 'FFFFFF']],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '2E75B6']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-        ]);
+                case 'data':
+                    $sheet->getStyle("A{$row}:V{$row}")->applyFromArray([
+                        'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'E0E0E0']]],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP, 'wrapText' => true],
+                    ]);
+                    if ($row % 2 === 0) {
+                        $sheet->getStyle("A{$row}:V{$row}")->getFill()
+                            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                            ->getStartColor()->setRGB('F7FAFC');
+                    }
+                    $sheet->getRowDimension($row)->setRowHeight(40);
+                    break;
 
-        $highRow = $sheet->getHighestRow();
+                case 'grand_total':
+                    $sheet->getStyle("A{$row}:V{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '1F3864']],
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D9E1F2']],
+                        'borders' => [
+                            'top'    => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => '1F3864']],
+                            'bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => '1F3864']],
+                        ],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                    ]);
+                    break;
 
-        // Data rows
-        for ($r = 6; $r < $highRow; $r++) {
-            $sheet->getStyle("A{$r}:L{$r}")->applyFromArray([
-                'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'E0E0E0']]],
-                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT],
-            ]);
-            if ($r % 2 === 0) {
-                $sheet->getStyle("A{$r}:L{$r}")->getFill()
-                    ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-                    ->getStartColor()->setRGB('F7FAFC');
+                case 'summary_title':
+                    $sheet->mergeCells("U{$row}:V{$row}");
+                    $sheet->getStyle("U{$row}:V{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 14, 'color' => ['rgb' => '1F3864']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E8F4FD']],
+                        'borders' => ['outline' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => '1F3864']]],
+                    ]);
+                    break;
+
+                case 'summary_positive':
+                    $sheet->getStyle("A{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 13, 'color' => ['rgb' => '000000']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT],
+                        'borders' => ['bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
+                    ]);
+                    $sheet->getStyle("U{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => '000000']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT],
+                        'borders' => ['bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
+                    ]);
+                    $sheet->getRowDimension($row)->setRowHeight(22);
+                    break;
+
+                case 'summary_negative':
+                    $sheet->getStyle("A{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 13, 'color' => ['rgb' => 'FF0000']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT],
+                        'borders' => ['bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
+                    ]);
+                    $sheet->getStyle("U{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => '000000']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT],
+                        'borders' => ['bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
+                    ]);
+                    $sheet->getRowDimension($row)->setRowHeight(22);
+                    break;
+
+                case 'summary_grand':
+                    $sheet->getStyle("A{$row}:V{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 14, 'color' => ['rgb' => 'FF0000']],
+                        'borders' => [
+                            'top'    => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => '000000']],
+                            'bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => '000000']],
+                        ],
+                    ]);
+                    $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+                    $sheet->getStyle("U{$row}")->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+                    $sheet->getRowDimension($row)->setRowHeight(26);
+                    break;
+
+                case 'inventory_title':
+                    $sheet->mergeCells("A{$row}:V{$row}");
+                    $sheet->getStyle("A{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 14, 'color' => ['rgb' => '1F3864']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF4E6']],
+                    ]);
+                    break;
+
+                case 'inventory_header':
+                    $sheet->getStyle("A{$row}:C{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => 'FFFFFF']],
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'ED6C02']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                    ]);
+                    break;
+
+                case 'inventory_data':
+                    $sheet->getStyle("A{$row}:C{$row}")->applyFromArray([
+                        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'D0D0D0']]],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT],
+                    ]);
+                    if ($row % 2 === 0) {
+                        $sheet->getStyle("A{$row}:C{$row}")->getFill()
+                            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                            ->getStartColor()->setRGB('FFFBF5');
+                    }
+                    break;
+
+                case 'inventory_total':
+                    $sheet->getStyle("A{$row}:C{$row}")->applyFromArray([
+                        'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => '1F3864']],
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFE0B2']],
+                        'borders' => ['top' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => 'ED6C02']]],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+                    ]);
+                    break;
             }
         }
-
-        // Grand Totals row
-        $sheet->getStyle("A{$highRow}:L{$highRow}")->applyFromArray([
-            'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '1F3864']],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D9E1F2']],
-            'borders' => [
-                'top'    => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => '1F3864']],
-                'bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE, 'color' => ['rgb' => '1F3864']],
-            ],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-        ]);
 
         return [];
     }
