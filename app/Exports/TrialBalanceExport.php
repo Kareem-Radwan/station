@@ -26,7 +26,7 @@ class TrialBalanceExport implements WithMultipleSheets
     public function sheets(): array
     {
         return [
-            // new HierarchicalTrialBalanceSheet($this->fromDate, $this->toDate),
+            new HierarchicalTrialBalanceSheet($this->fromDate, $this->toDate),
             new SectorialTrialBalanceMatrixSheet($this->fromDate, $this->toDate),
         ];
     }
