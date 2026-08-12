@@ -11,7 +11,7 @@ class Order extends Model
         'quantity_m3', 'cement_deducted', 'location',
         'delivery_date', 'delivery_time', 'status', 'notes',
         'unit_price', 'total_amount', 'payment_type',
-        'cash_amount', 'credit_amount', 'credit_due_date', 'material_prices', 'created_by',
+        'cash_amount', 'credit_amount', 'credit_due_date', 'material_prices', 'material_quantities', 'created_by',
     ];
 
     protected $casts = [
@@ -23,6 +23,7 @@ class Order extends Model
         'cash_amount'     => 'decimal:2',
         'credit_amount'   => 'decimal:2',
         'material_prices' => 'array',
+        'material_quantities' => 'array',
     ];
 
     public function customer()     { return $this->belongsTo(Customer::class); }

@@ -125,7 +125,7 @@
             {{-- Material Costs Panel (shown after mix + quantity selected) --}}
             <div id="materialCostsPanel" class="hidden card p-6 space-y-4">
                 <h3 class="text-white font-semibold border-b border-slate-700 pb-3 flex items-center gap-2">
-                    <i class="fas fa-layer-group text-amber-400 text-sm"></i> المواد المستخدمة والتكلفة (للعرض فقط)
+                    <i class="fas fa-layer-group text-amber-400 text-sm"></i> المواد المستخدمة والتكلفة
                 </h3>
                 <div id="materialCostsBody">
                     <div class="text-slate-400 text-sm text-center py-4">
@@ -139,7 +139,7 @@
                 </div>
                 <p class="text-slate-500 text-xs">
                     <i class="fas fa-info-circle ml-1"></i>
-                    يمكنك تعديل سعر الوحدة لكل مادة لتسجيل الأسعار القديمة. سيتم خصم الكميات من المخزون والتكلفة المحسوبة من الخزينة عند التسليم.
+                    يمكنك تعديل الكمية وسعر الوحدة لكل مادة. سيتم خصم الكميات المعدلة من المخزون والتكلفة المحسوبة من الخزينة عند التسليم.
                 </p>
             </div>
 
@@ -339,15 +339,29 @@
                     const lowStock = m.in_stock < m.quantity;
                     return `<tr class="${lowStock ? 'bg-red-900/10' : ''}" data-material-index="${idx}" data-material-name="${m.name}">
             <td class="py-2 px-3 text-white font-medium">${m.name_ar}</td>
-            <td class="py-2 px-3 text-slate-300">${fmt(m.quantity)} ${m.unit}</td>
+            <td class="py-2 px-3">
+                <div class="flex items-center gap-2">
+                    <input type="number" 
+                        step="0.001" 
+                        min="0"
+                        class="input-field w-24 px-2 py-1 text-sm material-quantity" 
+                        data-material-index="${idx}"
+                        data-material-name="${m.name}"
+                        data-original-quantity="${m.quantity}"
+                        placeholder="${fmt(m.quantity)}"
+                        oninput="updateMaterialTotal(${idx})">
+                    <input type="hidden" name="material_quantities[${m.name}]" class="material-quantity-hidden" value="${m.quantity}">
+                    <span class="text-slate-400 text-xs">${m.unit}</span>
+                </div>
+                <span class="text-slate-500 text-xs block mt-0.5">الكمية الأصلية: ${fmt(m.quantity)} ${m.unit}</span>
+            </td>
             <td class="py-2 px-3">
                 <input type="number" 
                     step="0.01" 
                     min="0"
-                    class="input-field w-full px-2 py-1 text-sm material-price" 
+                    class="input-field w-24 px-2 py-1 text-sm material-price" 
                     data-material-index="${idx}"
                     data-material-name="${m.name}"
-                    data-quantity="${m.quantity}"
                     placeholder="${fmtC(m.price_per_unit)}"
                     oninput="updateMaterialTotal(${idx})">
                 <input type="hidden" name="material_prices[${m.name}]" class="material-price-hidden" value="${m.price_per_unit}">
@@ -356,10 +370,10 @@
             <td class="py-2 px-3 font-semibold text-amber-400 material-total" data-material-index="${idx}">
                 ${fmtC(m.total)} جنية
             </td>
-            <td class="py-2 px-3 text-xs ${lowStock ? 'text-red-400 font-bold' : 'text-slate-500'}">
+            <td class="py-2 px-3 text-xs material-stock-status" data-material-index="${idx}" data-in-stock="${m.in_stock}">
                 ${lowStock
-                    ? '<i class="fas fa-exclamation-triangle ml-1"></i>مخزون غير كافٍ (' + fmt(m.in_stock) + ')'
-                    : '<i class="fas fa-check-circle ml-1 text-green-500"></i>متوفر (' + fmt(m.in_stock) + ')'}
+                    ? '<i class="fas fa-exclamation-triangle ml-1 text-red-400"></i><span class="text-red-400 font-bold">مخزون غير كافٍ (' + fmt(m.in_stock) + ')</span>'
+                    : '<i class="fas fa-check-circle ml-1 text-green-500"></i><span class="text-slate-500">متوفر (' + fmt(m.in_stock) + ')</span>'}
             </td>
         </tr>`;
                 }).join('');
@@ -389,32 +403,74 @@
             function updateMaterialTotal(index) {
                 const row = document.querySelector(`tr[data-material-index="${index}"]`);
                 const priceInput = row.querySelector('.material-price');
+                const quantityInput = row.querySelector('.material-quantity');
                 const totalCell = row.querySelector('.material-total');
-                const hiddenInput = row.querySelector('.material-price-hidden');
+                const priceHiddenInput = row.querySelector('.material-price-hidden');
+                const quantityHiddenInput = row.querySelector('.material-quantity-hidden');
+                const stockStatusCell = row.querySelector('.material-stock-status');
                 const materialName = row.dataset.materialName;
                 
-                const price = parseFloat(priceInput.value) || 0;
-                const quantity = parseFloat(priceInput.dataset.quantity) || 0;
+                // Get price - use input value if provided, otherwise use placeholder (default)
+                const priceValue = priceInput.value.trim();
+                const price = priceValue ? parseFloat(priceValue) : parseFloat(priceInput.placeholder);
+                
+                // Get quantity - use input value if provided, otherwise use placeholder (original quantity)
+                const quantityValue = quantityInput.value.trim();
+                const quantity = quantityValue ? parseFloat(quantityValue) : parseFloat(quantityInput.dataset.originalQuantity);
+                
                 const total = price * quantity;
                 
+                const fmt = (n, d = 3) => new Intl.NumberFormat('ar', {
+                    minimumFractionDigits: d,
+                    maximumFractionDigits: d
+                }).format(n);
                 const fmtC = (n) => new Intl.NumberFormat('ar', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 }).format(n);
                 
                 totalCell.textContent = fmtC(total) + ' جنية';
-                hiddenInput.value = price;
-                hiddenInput.name = `material_prices[${materialName}]`;
+                priceHiddenInput.value = price;
+                quantityHiddenInput.value = quantity;
+                priceHiddenInput.name = `material_prices[${materialName}]`;
+                quantityHiddenInput.name = `material_quantities[${materialName}]`;
+                
+                // Update stock status
+                const inStock = parseFloat(stockStatusCell.dataset.inStock);
+                const lowStock = inStock < quantity;
+                
+                if (lowStock) {
+                    stockStatusCell.innerHTML = `<i class="fas fa-exclamation-triangle ml-1 text-red-400"></i><span class="text-red-400 font-bold">مخزون غير كافٍ (${fmt(inStock)})</span>`;
+                    row.classList.add('bg-red-900/10');
+                } else {
+                    stockStatusCell.innerHTML = `<i class="fas fa-check-circle ml-1 text-green-500"></i><span class="text-slate-500">متوفر (${fmt(inStock)})</span>`;
+                    row.classList.remove('bg-red-900/10');
+                }
                 
                 // Recalculate grand total
                 recalculateMaterialGrandTotal();
             }
 
+            function editMaterialQuantity(index) {
+                const row = document.querySelector(`tr[data-material-index="${index}"]`);
+                const quantityInput = row.querySelector('.material-quantity');
+                quantityInput.focus();
+            }
+
             function recalculateMaterialGrandTotal() {
                 let grandTotal = 0;
-                document.querySelectorAll('.material-price').forEach(input => {
-                    const price = parseFloat(input.value) || 0;
-                    const quantity = parseFloat(input.dataset.quantity) || 0;
+                document.querySelectorAll('.material-price').forEach((priceInput, index) => {
+                    const row = priceInput.closest('tr');
+                    const quantityInput = row.querySelector('.material-quantity');
+                    
+                    // Get price - use input value if provided, otherwise use placeholder
+                    const priceValue = priceInput.value.trim();
+                    const price = priceValue ? parseFloat(priceValue) : parseFloat(priceInput.placeholder);
+                    
+                    // Get quantity - use input value if provided, otherwise use original quantity
+                    const quantityValue = quantityInput.value.trim();
+                    const quantity = quantityValue ? parseFloat(quantityValue) : parseFloat(quantityInput.dataset.originalQuantity);
+                    
                     grandTotal += price * quantity;
                 });
                 

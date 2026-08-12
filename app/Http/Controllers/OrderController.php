@@ -55,6 +55,8 @@ class OrderController extends Controller
             'credit_due_date' => 'nullable|date',
             'material_prices' => 'nullable|array',
             'material_prices.*' => 'nullable|numeric|min:0',
+            'material_quantities' => 'nullable|array',
+            'material_quantities.*' => 'nullable|numeric|min:0',
             'expenses'        => 'nullable|array',
             'expenses.*.name' => 'required|string|max:255',
             'expenses.*.amount' => 'required|numeric|min:0',

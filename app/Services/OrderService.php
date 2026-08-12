@@ -128,6 +128,7 @@ class OrderService
      * - Complete orders: ALL materials INCLUDING Cement (plant provides everything)
      * 
      * Uses custom material prices from order if available, otherwise falls back to current inventory prices.
+     * Uses custom material quantities from order if available, otherwise calculates from recipe.
      */
     public function deductInventoryForOrder(Order $order, ConcreteMix $mix, bool $isOperational): void
     {
@@ -135,6 +136,7 @@ class OrderService
         $recipe = $this->getRecipe($cementPerM3);
         $qty    = (float)$order->quantity_m3;
         $customPrices = $order->material_prices ?? [];
+        $customQuantities = $order->material_quantities ?? [];
 
         foreach ($recipe as $materialName => $amountPerM3) {
             // Lock the row for update to prevent race conditions
@@ -143,10 +145,15 @@ class OrderService
                 continue; // Skip if item not configured in inventory
             }
 
-            // Convert cement from kg to tons
-            $deductQty = ($materialName === 'Cement')
-                ? ($amountPerM3 * $qty) / 1000
-                : ($amountPerM3 * $qty);
+            // Use custom quantity if provided, otherwise calculate from recipe
+            if (isset($customQuantities[$materialName]) && $customQuantities[$materialName] > 0) {
+                $deductQty = (float)$customQuantities[$materialName];
+            } else {
+                // Convert cement from kg to tons
+                $deductQty = ($materialName === 'Cement')
+                    ? ($amountPerM3 * $qty) / 1000
+                    : ($amountPerM3 * $qty);
+            }
 
             if ($deductQty <= 0) continue;
 
