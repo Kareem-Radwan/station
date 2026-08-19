@@ -181,8 +181,10 @@ Route::middleware('auth')->group(function () {
 
         // ─── Treasury ─────────────────────────────────────────────────────────────────
         Route::get('treasury', [TreasuryController::class, 'index'])->name('treasury.index');
+        Route::get('treasury/debug-data', [TreasuryController::class, 'debugData'])->name('treasury.debug');
         Route::get('treasury/create', [TreasuryController::class, 'create'])->name('treasury.create');
         Route::post('treasury', [TreasuryController::class, 'store'])->name('treasury.store');
+        Route::post('treasury/recalculate', [TreasuryController::class, 'recalculateBalances'])->name('treasury.recalculate');
         Route::get('treasury/{treasury}/edit', [TreasuryController::class, 'edit'])->name('treasury.edit');
         Route::put('treasury/{treasury}', [TreasuryController::class, 'update'])->name('treasury.update');
         Route::delete('treasury/{treasury}', [TreasuryController::class, 'destroy'])->name('treasury.destroy');

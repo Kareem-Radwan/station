@@ -35,13 +35,66 @@ class TreasuryController extends Controller
             ->when($request->to_date,   fn($q,$v) => $q->where('transaction_date','<=',$v))
             ->latest('id')->paginate(30)->withQueryString();
 
-        $currentBalance = TreasuryTransaction::where('type','in')->sum('amount') - TreasuryTransaction::where('type','out')->sum('amount');
-        $monthlyIncoming = TreasuryTransaction::where('type','in')
-            ->where('transaction_date','>=',now()->startOfMonth()->toDateString())->sum('amount');
-        $monthlyOutgoing = TreasuryTransaction::where('type','out')
-            ->where('transaction_date','>=',now()->startOfMonth()->toDateString())->sum('amount');
+        // Current balance calculation
+        $currentBalance = TreasuryTransaction::where('type','in')->sum('amount') 
+                        - TreasuryTransaction::where('type','out')->sum('amount');
+        
+        // Total incoming for ALL time (not just one month)
+        $totalIncoming = (float) TreasuryTransaction::where('type', 'in')->sum('amount');
+            
+        // Total outgoing for ALL time (not just one month)
+        $totalOutgoing = (float) TreasuryTransaction::where('type', 'out')->sum('amount');
 
-        return view('treasury.index', compact('transactions','currentBalance','monthlyIncoming','monthlyOutgoing'));
+        return view('treasury.index', compact('transactions','currentBalance','totalIncoming','totalOutgoing'));
+    }
+
+    // ─── Recalculate Balances (for SQL imports) ───────────────────────────────
+
+    public function recalculateBalances()
+    {
+        DB::transaction(function () {
+            $this->treasuryService->recalculateBalances();
+        });
+
+        return redirect()->route('treasury.index')->with('success', 'تم إعادة حساب الأرصدة بنجاح');
+    }
+    
+    // ─── Debug Treasury Data ──────────────────────────────────────────────────
+    
+    public function debugData()
+    {
+        $allTransactions = TreasuryTransaction::orderBy('transaction_date')->get();
+        
+        $summary = [
+            'total_transactions' => $allTransactions->count(),
+            'total_in' => TreasuryTransaction::where('type', 'in')->sum('amount'),
+            'total_out' => TreasuryTransaction::where('type', 'out')->sum('amount'),
+            'date_range' => [
+                'earliest' => $allTransactions->first()?->transaction_date?->format('Y-m-d'),
+                'latest' => $allTransactions->last()?->transaction_date?->format('Y-m-d'),
+            ],
+            'current_month_check' => [
+                'month_start' => now()->startOfMonth()->format('Y-m-d'),
+                'month_end' => now()->endOfMonth()->format('Y-m-d'),
+                'count_in_current_month' => TreasuryTransaction::whereDate('transaction_date', '>=', now()->startOfMonth())
+                    ->whereDate('transaction_date', '<=', now()->endOfMonth())
+                    ->count(),
+                'incoming_current_month' => TreasuryTransaction::where('type', 'in')
+                    ->whereDate('transaction_date', '>=', now()->startOfMonth())
+                    ->whereDate('transaction_date', '<=', now()->endOfMonth())
+                    ->sum('amount'),
+                'outgoing_current_month' => TreasuryTransaction::where('type', 'out')
+                    ->whereDate('transaction_date', '>=', now()->startOfMonth())
+                    ->whereDate('transaction_date', '<=', now()->endOfMonth())
+                    ->sum('amount'),
+            ],
+            'monthly_breakdown' => TreasuryTransaction::selectRaw("DATE_FORMAT(transaction_date, '%Y-%m') as month, type, COUNT(*) as count, SUM(amount) as total")
+                ->groupBy('month', 'type')
+                ->orderBy('month')
+                ->get(),
+        ];
+        
+        return response()->json($summary);
     }
 
     // ─── Create ────────────────────────────────────────────────────────────────

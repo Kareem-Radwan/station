@@ -63,7 +63,6 @@ class SupplierPurchaseSeeder extends Seeder
             'عمر ساري' => 1,
             'محمد فتحي' => 5,
             'هاي كيم' => 4,
-
         ];
 
 

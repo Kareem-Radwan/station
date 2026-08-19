@@ -9,6 +9,17 @@
     'createLabel' => 'قيد يدوي',
 ])
 
+{{-- Recalculate Button for SQL Imports --}}
+<div class="mb-4">
+    <form method="POST" action="{{ route('treasury.recalculate') }}" 
+          onsubmit="return confirm('هل أنت متأكد من إعادة حساب جميع الأرصدة؟ هذه العملية قد تستغرق بعض الوقت.')">
+        @csrf
+        <button type="submit" class="btn-primary text-white px-4 py-2 rounded-lg text-sm">
+            <i class="fas fa-sync-alt"></i> إعادة حساب الأرصدة (بعد استيراد البيانات)
+        </button>
+    </form>
+</div>
+
 {{-- Balance Cards --}}
 <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
     <div class="stat-card rounded-2xl p-5 relative overflow-hidden">
@@ -22,14 +33,14 @@
 
     <div class="stat-card rounded-2xl p-5 relative overflow-hidden">
         <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-green-600"></div>
-        <p class="text-slate-400 text-xs mb-1">وارد هذا الشهر</p>
-        <p class="text-3xl font-bold text-green-400">{{ number_format($monthlyIncoming ?? 0, 2) }}</p>
+        <p class="text-slate-400 text-xs mb-1">إجمالي الوارد</p>
+        <p class="text-3xl font-bold text-green-400">{{ number_format($totalIncoming ?? 0, 2) }}</p>
         <p class="text-slate-500 text-sm">جنية</p>
     </div>
     <div class="stat-card rounded-2xl p-5 relative overflow-hidden">
         <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-400 to-red-600"></div>
-        <p class="text-slate-400 text-xs mb-1">صادر هذا الشهر</p>
-        <p class="text-3xl font-bold text-red-400">{{ number_format($monthlyOutgoing ?? 0, 2) }}</p>
+        <p class="text-slate-400 text-xs mb-1">إجمالي الصادر</p>
+        <p class="text-3xl font-bold text-red-400">{{ number_format($totalOutgoing ?? 0, 2) }}</p>
         <p class="text-slate-500 text-sm">جنية</p>
     </div>
 </div>
