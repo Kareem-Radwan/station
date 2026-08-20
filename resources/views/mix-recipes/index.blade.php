@@ -109,6 +109,12 @@
                         <input type="number" step="0.001" name="additives_liter" required
                             class="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
                     </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">جاز (لتر)</label>
+                        <input type="number" step="0.001" name="gaz_liter" value="0"
+                            class="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                    </div>
                 </div>
 
                 <div class="mb-4">
@@ -142,6 +148,7 @@
                         <th class="px-4 py-3 font-semibold">اسمنت (كجم)</th>
                         <th class="px-4 py-3 font-semibold">ماء (م³)</th>
                         <th class="px-4 py-3 font-semibold">مضافات (لتر)</th>
+                        <th class="px-4 py-3 font-semibold">جاز (لتر)</th>
                         <th class="px-4 py-3 font-semibold text-center">إجراءات</th>
                     </tr>
                 </thead>
@@ -155,6 +162,7 @@
                             <td class="px-4 py-3 text-slate-300">{{ $recipe->cement_kg }}</td>
                             <td class="px-4 py-3 text-slate-300">{{ $recipe->water_m3 }}</td>
                             <td class="px-4 py-3 text-slate-300">{{ $recipe->additives_liter }}</td>
+                            <td class="px-4 py-3 text-slate-300">{{ $recipe->gaz_liter ?? 0 }}</td>
                             <td class="px-4 py-3 text-center whitespace-nowrap">
                                 <button onclick="toggleEditForm({{ $recipe->id }})"
                                     class="text-blue-400 hover:text-blue-300 font-medium inline-flex items-center mx-2">
@@ -172,7 +180,7 @@
                             </td>
                         </tr>
                         <tr id="edit-form-{{ $recipe->id }}" class="hidden bg-slate-800/20">
-                            <td colspan="8" class="px-6 py-4 border-b border-slate-700">
+                            <td colspan="9" class="px-6 py-4 border-b border-slate-700">
                                 <form action="{{ route('mix-recipes.update', $recipe) }}" method="POST">
                                     @csrf
                                     @method('PUT')
@@ -223,6 +231,14 @@
                                                 value="{{ $recipe->additives_liter }}" required
                                                 class="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
                                         </div>
+
+                                        <div>
+                                            <label class="block text-xs font-medium text-slate-400 mb-1">جاز
+                                                (لتر)</label>
+                                            <input type="number" step="0.001" name="gaz_liter"
+                                                value="{{ $recipe->gaz_liter ?? 0 }}"
+                                                class="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                                        </div>
                                     </div>
 
                                     <div class="mb-4">
@@ -246,7 +262,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-4 py-12 text-center text-slate-500">
+                            <td colspan="9" class="px-4 py-12 text-center text-slate-500">
                                 <i class="fas fa-flask text-3xl mb-3 block opacity-30"></i>
                                 لا توجد وصفات. قم بإضافة وصفة جديدة.
                             </td>

@@ -27,6 +27,7 @@ class MixRecipeController extends Controller
             'cement_kg' => 'required|numeric|min:0',
             'water_m3' => 'required|numeric|min:0',
             'additives_liter' => 'required|numeric|min:0',
+            'gaz_liter' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
         ]);
 
@@ -45,6 +46,7 @@ class MixRecipeController extends Controller
             'cement_kg' => 'required|numeric|min:0',
             'water_m3' => 'required|numeric|min:0',
             'additives_liter' => 'required|numeric|min:0',
+            'gaz_liter' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
         ]);
 

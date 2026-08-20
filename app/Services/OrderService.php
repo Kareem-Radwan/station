@@ -40,6 +40,7 @@ class OrderService
             'Cement'    => 350,
             'Water'     => 0.2,
             'Additives' => 4.5,
+            'Gaz'       => 5,
         ];
     }
 
@@ -484,11 +485,26 @@ class OrderService
             }
 
             $item = $items->get($materialName);
-            $qty  = ($materialName === 'Cement')
-                ? ($amountPerM3 * $quantityM3) / 1000
-                : ($amountPerM3 * $quantityM3);
+            
+            // Calculate quantity based on material type
+            if ($materialName === 'Cement') {
+                $qty = ($amountPerM3 * $quantityM3) / 1000; // Convert kg to tons
+            } elseif (in_array($materialName, ['Additives', 'Gaz'])) {
+                $qty = $amountPerM3 * $quantityM3; // Liters
+            } else {
+                $qty = $amountPerM3 * $quantityM3; // m³ for sand, gravel, water
+            }
 
-            $unit       = $item?->unit ?? ($materialName === 'Cement' ? 'طن' : ($materialName === 'Additives' ? 'لتر' : 'م³'));
+            // Determine unit
+            if ($materialName === 'Cement') {
+                $unit = 'طن';
+            } elseif (in_array($materialName, ['Additives', 'Gaz'])) {
+                $unit = 'لتر';
+            } else {
+                $unit = 'م³';
+            }
+            
+            $unit       = $item?->unit ?? $unit;
             $price      = (float)($item?->price_per_unit ?? 0);
             $total      = $qty * $price;
 

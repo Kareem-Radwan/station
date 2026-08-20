@@ -14,6 +14,7 @@ class MixRecipe extends Model
         'cement_kg',
         'water_m3',
         'additives_liter',
+        'gaz_liter',
         'notes',
     ];
 
@@ -25,6 +26,7 @@ class MixRecipe extends Model
         'cement_kg' => 'decimal:3',
         'water_m3' => 'decimal:3',
         'additives_liter' => 'decimal:3',
+        'gaz_liter' => 'decimal:3',
     ];
 
     /**
@@ -41,6 +43,7 @@ class MixRecipe extends Model
             'Cement' => $this->cement_kg,
             'Water' => $this->water_m3,
             'Additives' => $this->additives_liter,
+            'Gaz' => $this->gaz_liter,
         ];
     }
 }
