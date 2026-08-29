@@ -49,7 +49,8 @@ class SupplierPaymentController extends Controller
                 category: 'supplier_payment',
                 description: 'دفعة للمورد: ' . $supplier->name,
                 referenceType: 'supplier_payment',
-                referenceId: $payment->id
+                referenceId: $payment->id,
+                transactionDate: $request->payment_date
             );
         } else {
             // Deduction: we take money back from them, balance increases (we owe more / they owe us)

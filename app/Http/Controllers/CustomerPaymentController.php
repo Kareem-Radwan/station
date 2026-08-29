@@ -43,7 +43,8 @@ class CustomerPaymentController extends Controller
             category: 'customer_payment',
             description: 'دفعة من العميل: ' . $customer->name,
             referenceType: 'customer_payment',
-            referenceId: $payment->id
+            referenceId: $payment->id,
+            transactionDate: $request->payment_date
         );
 
         return redirect()->route('customer-payments.index')->with('success', 'تم تسجيل الدفعة بنجاح');

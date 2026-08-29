@@ -34,21 +34,15 @@ class RentalMaintenanceController extends Controller
                 'recorded_by'        => auth()->id(),
             ]);
 
-            // Record in treasury as expense
-            $currentBalance = \App\Models\TreasuryTransaction::getCurrentBalance();
-            $newBalance = $currentBalance - $request->cost;
-
-            \App\Models\TreasuryTransaction::create([
-                'type'             => 'out',
-                'category'         => 'rental_maintenance',
-                'amount'           => $request->cost,
-                'balance_after'    => $newBalance,
-                'transaction_date' => $request->maintenance_date,
-                'description'      => 'صيانة ' . $rental->equipment_name . ': ' . $request->description,
-                'reference_type'   => 'App\Models\RentalMaintenance',
-                'reference_id'     => $maintenance->id,
-                'recorded_by'      => auth()->id(),
-            ]);
+            // Record in treasury as expense using TreasuryService
+            app(\App\Services\TreasuryService::class)->recordOutgoing(
+                amount: (float) $request->cost,
+                category: 'rental_maintenance',
+                description: 'صيانة ' . $rental->equipment_name . ': ' . $request->description,
+                referenceType: 'App\Models\RentalMaintenance',
+                referenceId: $maintenance->id,
+                transactionDate: $request->maintenance_date
+            );
         });
 
         return redirect()->route('rentals.show', $rental)->with('success', 'تم تسجيل الصيانة وإضافتها للخزينة');
@@ -59,36 +53,8 @@ class RentalMaintenanceController extends Controller
         $rentalId = $maintenance->rental_contract_id;
         
         \DB::transaction(function () use ($maintenance) {
-            // Find and delete the related treasury transaction
-            $treasuryTransaction = \App\Models\TreasuryTransaction::where('reference_type', 'App\Models\RentalMaintenance')
-                ->where('reference_id', $maintenance->id)
-                ->first();
-            
-            if ($treasuryTransaction) {
-                // Recalculate all balances after this transaction
-                $subsequentTransactions = \App\Models\TreasuryTransaction::where('id', '>', $treasuryTransaction->id)
-                    ->orderBy('id')
-                    ->get();
-                
-                // Delete the transaction
-                $treasuryTransaction->delete();
-                
-                // Recalculate balances for all subsequent transactions
-                if ($subsequentTransactions->isNotEmpty()) {
-                    $currentBalance = \App\Models\TreasuryTransaction::where('id', '<', $treasuryTransaction->id)
-                        ->latest('id')
-                        ->value('balance_after') ?? 0;
-                    
-                    foreach ($subsequentTransactions as $trans) {
-                        if ($trans->type === 'in') {
-                            $currentBalance += $trans->amount;
-                        } else {
-                            $currentBalance -= $trans->amount;
-                        }
-                        $trans->update(['balance_after' => $currentBalance]);
-                    }
-                }
-            }
+            // Delete treasury transactions via TreasuryService
+            app(\App\Services\TreasuryService::class)->deleteTransaction('App\Models\RentalMaintenance', $maintenance->id);
             
             $maintenance->delete();
         });

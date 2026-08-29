@@ -57,22 +57,18 @@ class ContributorPaymentController extends Controller
                 'treasury_transaction_id' => null,
             ]);
 
-            // Create treasury OUT transaction
-            $treasury = TreasuryTransaction::create([
-                'type'             => 'out',
-                'amount'           => $validated['amount'],
-                'category'         => 'contributor_payment_out',
-                'description'      => 'دفعة لمساهم: ' . $contributor->name,
-                'transaction_date' => $validated['payment_date'],
-                'reference_type'   => 'contributor_payment',
-                'reference_id'     => $payment->id,
-                'balance_after'    => $this->calculateBalanceAfter($validated['amount'], 'out'),
-                'recorded_by'      => auth()->id(),
-            ]);
+            // Create treasury OUT transaction using TreasuryService
+            app(TreasuryService::class)->recordOutgoing(
+                amount: (float) $validated['amount'],
+                category: 'contributor_payment_out',
+                description: 'دفعة لمساهم: ' . $contributor->name,
+                referenceType: 'contributor_payment',
+                referenceId: $payment->id,
+                transactionDate: $validated['payment_date']
+            );
 
             // Deduct the payment amount from contributor's share_amount
             $contributor->decrement('share_amount', $validated['amount']);
-            app(TreasuryService::class)->recalculateBalances();
         });
 
         $redirectContributorId = $validated['contributor_id'];
@@ -157,19 +153,4 @@ class ContributorPaymentController extends Controller
         return back()->with('success', 'تم حذف الدفعة');
     }
 
-    // ─── Private Helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Calculate the running balance after this transaction.
-     * Mirrors the pattern used by TreasuryController.
-     */
-    private function calculateBalanceAfter(float $amount, string $type): float
-    {
-        $lastBalance = (float) TreasuryTransaction::orderBy('id', 'desc')
-            ->value('balance_after') ?? 0;
-
-        return $type === 'in'
-            ? $lastBalance + $amount
-            : $lastBalance - $amount;
-    }
 }

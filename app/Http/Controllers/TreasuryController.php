@@ -33,16 +33,20 @@ class TreasuryController extends Controller
             ->when($request->type,      fn($q,$v) => $q->where('type',$v))
             ->when($request->from_date, fn($q,$v) => $q->where('transaction_date','>=',$v))
             ->when($request->to_date,   fn($q,$v) => $q->where('transaction_date','<=',$v))
-            ->latest('id')->paginate(30)->withQueryString();
+            ->latest('transaction_date')
+            ->latest('id')
+            ->paginate(30)
+            ->withQueryString();
 
-        // Current balance calculation
-        $currentBalance = TreasuryTransaction::where('type','in')->sum('amount') 
-                        - TreasuryTransaction::where('type','out')->sum('amount');
+        // Current balance from the latest transaction by date+id order
+        $currentBalance = TreasuryTransaction::orderBy('transaction_date', 'desc')
+                            ->orderBy('id', 'desc')
+                            ->value('balance_after') ?? 0;
         
-        // Total incoming for ALL time (not just one month)
+        // Total incoming for ALL time
         $totalIncoming = (float) TreasuryTransaction::where('type', 'in')->sum('amount');
             
-        // Total outgoing for ALL time (not just one month)
+        // Total outgoing for ALL time
         $totalOutgoing = (float) TreasuryTransaction::where('type', 'out')->sum('amount');
 
         return view('treasury.index', compact('transactions','currentBalance','totalIncoming','totalOutgoing'));

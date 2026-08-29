@@ -142,43 +142,35 @@ class ContributorController extends Controller
             // 1. Increase contributor's share_amount
             $contributor->increment('share_amount', $validated['amount']);
 
-            // 2. Create treasury IN transaction
-            $treasury = TreasuryTransaction::create([
-                'type'             => 'in',
-                'amount'           => $validated['amount'],
-                'category'         => 'contributor_payment',
-                'description'      => 'زيادة رأس مال مساهم: ' . $contributor->name,
-                'transaction_date' => $validated['payment_date'],
-                'balance_after'    => $this->calculateBalanceAfter($validated['amount'], 'in'),
-                'recorded_by'      => auth()->id(),
-            ]);
+            // 2. Create treasury IN transaction using TreasuryService
+            $treasuryService = app(\App\Services\TreasuryService::class);
+            $treasuryTransaction = $treasuryService->recordIncoming(
+                amount: (float) $validated['amount'],
+                category: 'contributor_payment',
+                description: 'زيادة رأس مال مساهم: ' . $contributor->name,
+                referenceType: null, // Will be updated after ContributorPayment is created
+                referenceId: null,
+                transactionDate: $validated['payment_date']
+            );
 
             // 3. Create contributor payment record
-            ContributorPayment::create([
+            $payment = ContributorPayment::create([
                 'contributor_id'           => $contributor->id,
                 'amount'                   => $validated['amount'],
                 'payment_date'             => $validated['payment_date'],
                 'payment_method'           => 'cash',
                 'notes'                    => $validated['notes'] ?? 'زيادة رأس المال',
-                'treasury_transaction_id'  => $treasury->id,
+                'treasury_transaction_id'  => $treasuryTransaction->id,
+            ]);
+
+            // 4. Update the treasury transaction reference to point to the payment record
+            $treasuryTransaction->update([
+                'reference_type' => ContributorPayment::class,
+                'reference_id' => $payment->id,
             ]);
         });
 
         return back()->with('success', 'تم إضافة المبلغ إلى رأس المال والخزينة بنجاح');
     }
 
-    // ─── Private Helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Calculate the running balance after this transaction.
-     */
-    private function calculateBalanceAfter(float $amount, string $type): float
-    {
-        $lastBalance = (float) TreasuryTransaction::orderBy('id', 'desc')
-            ->value('balance_after') ?? 0;
-
-        return $type === 'in'
-            ? $lastBalance + $amount
-            : $lastBalance - $amount;
-    }
 }

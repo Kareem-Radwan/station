@@ -136,7 +136,8 @@ class SupplierPurchaseController extends Controller
                     category: 'supplier_payment',
                     description: $description,
                     referenceType: 'purchase',
-                    referenceId: $purchase->id
+                    referenceId: $purchase->id,
+                    transactionDate: $request->purchase_date
                 );
             }
 

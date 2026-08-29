@@ -138,6 +138,9 @@ class OrderService
         $qty    = (float)$order->quantity_m3;
         $customPrices = $order->material_prices ?? [];
         $customQuantities = $order->material_quantities ?? [];
+        
+        // Use delivery_date for treasury transactions
+        $transactionDate = $order->delivery_date?->toDateString() ?? now()->toDateString();
 
         foreach ($recipe as $materialName => $amountPerM3) {
             // Lock the row for update to prevent race conditions
@@ -178,7 +181,7 @@ class OrderService
                 'reference_id'      => $order->id,
                 'notes'             => 'خصم تلقائي - طلب #' . $order->id,
                 'recorded_by'       => auth()->id(),
-                'movement_date'     => now()->toDateString(),
+                'movement_date'     => $transactionDate,
             ]);
 
             // Deduct material cost from treasury
@@ -199,7 +202,8 @@ class OrderService
                         category: 'material_cost',
                         description: 'تكلفة ' . $item->name_ar . ' - طلب #' . $order->id . ' (' . number_format($deductQty, 3) . ' ' . $item->unit . ' × ' . number_format($pricePerUnit, 2) . ' جنية)',
                         referenceType: 'order',
-                        referenceId: $order->id
+                        referenceId: $order->id,
+                        transactionDate: $transactionDate
                     );
                 }
             }
@@ -388,6 +392,9 @@ class OrderService
     {
         $order->load(['customer', 'concreteMix', 'expenses']);
         
+        // Use delivery_date as the transaction date for treasury records
+        $transactionDate = $order->delivery_date?->toDateString() ?? now()->toDateString();
+        
         // Record cash payment in treasury
         if (!empty($order->cash_amount) && $order->cash_amount > 0) {
             $this->treasuryService->recordIncoming(
@@ -395,7 +402,8 @@ class OrderService
                 category: 'customer_payment',
                 description: 'دفعة نقدية - طلب #' . $order->id . ' - ' . $order->customer->name,
                 referenceType: 'order',
-                referenceId: $order->id
+                referenceId: $order->id,
+                transactionDate: $transactionDate
             );
         }
 
@@ -415,7 +423,8 @@ class OrderService
                 category: 'order_expense',
                 description: 'مصروف طلب: ' . $expense->expense_name . ' - طلب #' . $order->id,
                 referenceType: 'order_expense',
-                referenceId: $expense->id
+                referenceId: $expense->id,
+                transactionDate: $transactionDate
             );
         }
     }

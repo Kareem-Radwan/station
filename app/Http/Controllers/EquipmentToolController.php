@@ -43,20 +43,16 @@ class EquipmentToolController extends Controller
 
             // If there's initial quantity, create treasury transaction and movement
             if ($validated['quantity'] > 0 && $validated['total_value'] > 0) {
-                // Create treasury transaction (expense)
-                $treasuryTransaction = TreasuryTransaction::create([
-                    'type' => 'out',
-                    'category' => 'مشتريات مخزون المعدات',
-                    'amount' => $validated['total_value'],
-                    'balance_after' => TreasuryTransaction::latest('id')->first()->balance_after ?? 0,
-                    'description' => "رصيد افتتاحي: {$validated['quantity']} {$validated['unit']} من {$validated['name']}",
-                    'transaction_date' => now(),
-                    'notes' => $validated['notes'],
-                ]);
-
-                // Update treasury balance
-                $treasuryTransaction->balance_after = ($treasuryTransaction->balance_after ?? 0) - $validated['total_value'];
-                $treasuryTransaction->save();
+                // Create treasury transaction (expense) using TreasuryService
+                $treasuryService = app(\App\Services\TreasuryService::class);
+                $treasuryTransaction = $treasuryService->recordOutgoing(
+                    amount: (float) $validated['total_value'],
+                    category: 'مشتريات مخزون المعدات',
+                    description: "رصيد افتتاحي: {$validated['quantity']} {$validated['unit']} من {$validated['name']}",
+                    referenceType: EquipmentTool::class,
+                    referenceId: $tool->id,
+                    transactionDate: now()->toDateString()
+                );
 
                 // Create initial movement record
                 EquipmentToolMovement::create([
@@ -120,20 +116,16 @@ class EquipmentToolController extends Controller
             $equipmentTool->total_value = $newValue;
             $equipmentTool->save();
 
-            // إنشاء معاملة خزينة (صرف)
-            $treasuryTransaction = TreasuryTransaction::create([
-                'type' => 'out',
-                'category' => 'مشتريات مخزون المعدات',
-                'amount' => $totalCost,
-                'balance_after' => TreasuryTransaction::latest('id')->first()->balance_after ?? 0,
-                'description' => "شراء {$quantity} {$equipmentTool->unit} من {$equipmentTool->name}",
-                'transaction_date' => $validated['movement_date'],
-                'notes' => $validated['notes'],
-            ]);
-
-            // تحديث رصيد الخزينة
-            $treasuryTransaction->balance_after = ($treasuryTransaction->balance_after ?? 0) - $totalCost;
-            $treasuryTransaction->save();
+            // إنشاء معاملة خزينة (صرف) using TreasuryService
+            $treasuryService = app(\App\Services\TreasuryService::class);
+            $treasuryTransaction = $treasuryService->recordOutgoing(
+                amount: (float) $totalCost,
+                category: 'مشتريات مخزون المعدات',
+                description: "شراء {$quantity} {$equipmentTool->unit} من {$equipmentTool->name}",
+                referenceType: EquipmentTool::class,
+                referenceId: $equipmentTool->id,
+                transactionDate: $validated['movement_date']
+            );
 
             // تسجيل الحركة
             EquipmentToolMovement::create([
@@ -185,20 +177,17 @@ class EquipmentToolController extends Controller
             $equipmentTool->total_value = $newValue;
             $equipmentTool->save();
 
-            // إنشاء معاملة خزينة (مصروف - استهلاك)
-            $treasuryTransaction = TreasuryTransaction::create([
-                'type' => 'in',
-                'category' => 'استهلاك مخزون المعدات',
-                'amount' => $totalCost,
-                'balance_after' => TreasuryTransaction::latest('id')->first()->balance_after ?? 0,
-                'description' => "استهلاك {$quantity} {$equipmentTool->unit} من {$equipmentTool->name}",
-                'transaction_date' => $validated['movement_date'],
-                'notes' => $validated['notes'],
-            ]);
-
-            // تحديث رصيد الخزينة
-            $treasuryTransaction->balance_after = ($treasuryTransaction->balance_after ?? 0) - $totalCost;
-            $treasuryTransaction->save();
+            // Note: Stock-out is an expense (consumption), so it should be 'out' not 'in'
+            // The treasury loses money when equipment is consumed
+            $treasuryService = app(\App\Services\TreasuryService::class);
+            $treasuryTransaction = $treasuryService->recordOutgoing(
+                amount: (float) $totalCost,
+                category: 'استهلاك مخزون المعدات',
+                description: "استهلاك {$quantity} {$equipmentTool->unit} من {$equipmentTool->name}",
+                referenceType: EquipmentTool::class,
+                referenceId: $equipmentTool->id,
+                transactionDate: $validated['movement_date']
+            );
 
             // تسجيل الحركة
             EquipmentToolMovement::create([

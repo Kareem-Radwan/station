@@ -93,26 +93,40 @@ class ExpenseController extends Controller
             if ($request->payment_method === 'contributor' && $request->contributor_id) {
                 $contributor = \App\Models\Contributor::lockForUpdate()->findOrFail($request->contributor_id);
                 
-                // Record treasury IN from contributor
-                $treasury = \App\Models\TreasuryTransaction::create([
-                    'type'             => 'in',
-                    'amount'           => $request->amount,
-                    'category'         => 'contributor_payment',
-                    'description'      => 'دفعة مساهم لتغطية مصروف: ' . $contributor->name,
-                    'transaction_date' => $request->expense_date,
-                    'balance_after'    => $this->calculateBalanceAfter((float)$request->amount, 'in'),
-                    'recorded_by'      => auth()->id(),
-                ]);
+                // Record treasury IN from contributor using TreasuryService
+                $this->treasuryService->recordIncoming(
+                    amount: (float)$request->amount,
+                    category: 'contributor_payment',
+                    description: 'دفعة مساهم لتغطية مصروف: ' . $contributor->name,
+                    referenceType: 'contributor_payment',
+                    referenceId: null, // Will be updated after ContributorPayment is created
+                    transactionDate: $request->expense_date
+                );
+
+                // Get the treasury transaction that was just created
+                $treasury = \App\Models\TreasuryTransaction::where('category', 'contributor_payment')
+                    ->where('transaction_date', $request->expense_date)
+                    ->where('amount', $request->amount)
+                    ->latest('id')
+                    ->first();
 
                 // Create contributor payment record
-                \App\Models\ContributorPayment::create([
+                $contributorPayment = \App\Models\ContributorPayment::create([
                     'contributor_id'           => $contributor->id,
                     'amount'                   => $request->amount,
                     'payment_date'             => $request->expense_date,
                     'payment_method'           => 'cash',
                     'notes'                    => 'دفعة لتغطية: ' . $expense->description,
-                    'treasury_transaction_id'  => $treasury->id,
+                    'treasury_transaction_id'  => $treasury?->id,
                 ]);
+
+                // Update the treasury transaction reference
+                if ($treasury && $contributorPayment) {
+                    $treasury->update([
+                        'reference_type' => 'contributor_payment',
+                        'reference_id' => $contributorPayment->id,
+                    ]);
+                }
 
                 // Increase contributor's share_amount (we owe them more)
                 $contributor->increment('share_amount', $request->amount);
@@ -244,17 +258,4 @@ class ExpenseController extends Controller
     }
 
     public function show(Expense $expense) { return view('expenses.show', compact('expense')); }
-
-    /**
-     * Calculate the running balance after this transaction.
-     */
-    private function calculateBalanceAfter(float $amount, string $type): float
-    {
-        $lastBalance = (float) \App\Models\TreasuryTransaction::orderBy('id', 'desc')
-            ->value('balance_after') ?? 0;
-
-        return $type === 'in'
-            ? $lastBalance + $amount
-            : $lastBalance - $amount;
-    }
 }
