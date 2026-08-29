@@ -390,6 +390,8 @@ class OrderService
      */
     private function processDeliveredOrder(Order $order): void
     {
+        // Refresh the order to get the latest data including delivery_date
+        $order->refresh();
         $order->load(['customer', 'concreteMix', 'expenses']);
         
         // Use delivery_date as the transaction date for treasury records
