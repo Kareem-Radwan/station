@@ -39,7 +39,7 @@ class DashboardController extends Controller
         // Monthly revenue/expenses for chart (last 6 months)
         $chartData = [];
         for ($i = 5; $i >= 0; $i--) {
-            $date  = now()->subMonths($i);
+            $date  = now()->startOfMonth()->subMonths($i);
             $start = $date->copy()->startOfMonth()->toDateString();
             $end   = $date->copy()->endOfMonth()->toDateString();
             $chartData[] = [
