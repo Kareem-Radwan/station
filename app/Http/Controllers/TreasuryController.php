@@ -537,9 +537,8 @@ class TreasuryController extends Controller
             case 'customer_payment':
                 $payment = CustomerPayment::find($treasury->reference_id);
                 if ($payment) {
-                    if ($payment->customer) {
-                        $payment->customer->decrement('balance', $payment->amount);
-                    }
+                    // No stored balance column on customers table — balance is computed dynamically.
+                    // Simply delete the payment record; the outstanding balance recalculates automatically.
                     $payment->delete();
                 }
                 break;
