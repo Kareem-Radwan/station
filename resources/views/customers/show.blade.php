@@ -110,11 +110,15 @@
                 </span>
             </div>
         </div>
-        <div class="mt-4">
+        <div class="mt-4 space-y-2">
             <a href="{{ route('customer-payments.create') }}?customer_id={{ $customer->id }}"
                 class="w-full btn-primary text-white px-4 py-2 rounded-lg text-sm font-bold block text-center">
                 <i class="fas fa-hand-holding-usd"></i> تسجيل دفعة
             </a>
+            <button type="button" onclick="document.getElementById('deduction-modal').classList.remove('hidden')"
+                class="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                <i class="fas fa-minus-circle"></i> خصم من عميل
+            </button>
         </div>
     </div>
 
@@ -166,6 +170,107 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+</div>
+
+{{-- Deductions Table --}}
+@if($customer->deductions->count() > 0)
+<div class="card mt-6 overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+        <h3 class="text-white font-bold flex items-center gap-2">
+            <i class="fas fa-minus-circle text-red-400"></i> سجل الخصومات ({{ $customer->deductions->count() }})
+        </h3>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-slate-800/50 border-b border-slate-700">
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">التاريخ</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">المبلغ</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">السبب</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">الملاحظات</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">المسجل بواسطة</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                @foreach($customer->deductions as $deduction)
+                <tr class="table-row">
+                    <td class="px-4 py-3 text-slate-300">{{ $deduction->deduction_date->format('d/m/Y') }}</td>
+                    <td class="px-4 py-3 text-red-400 font-bold">-{{ number_format($deduction->amount, 2) }}</td>
+                    <td class="px-4 py-3 text-white">{{ $deduction->reason ?? '-' }}</td>
+                    <td class="px-4 py-3 text-slate-400 text-xs">{{ $deduction->notes ?? '-' }}</td>
+                    <td class="px-4 py-3 text-slate-400 text-xs">{{ $deduction->recordedBy?->name ?? '-' }}</td>
+                    <td class="px-4 py-3">
+                        <form action="{{ route('customer-deductions.destroy', $deduction) }}" method="POST" 
+                            onsubmit="return confirm('هل أنت متأكد من حذف هذا الخصم؟')">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="text-red-400 hover:text-red-300 text-xs">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+
+{{-- Deduction Modal --}}
+<div id="deduction-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-xl shadow-2xl w-full max-w-md border border-slate-700">
+        <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+            <h3 class="text-white font-bold flex items-center gap-2">
+                <i class="fas fa-minus-circle text-red-400"></i>
+                خصم من العميل
+            </h3>
+            <button type="button" onclick="document.getElementById('deduction-modal').classList.add('hidden')"
+                class="text-slate-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form action="{{ route('customer-deductions.store') }}" method="POST" class="p-6 space-y-4">
+            @csrf
+            <input type="hidden" name="customer_id" value="{{ $customer->id }}">
+            
+            <div>
+                <label class="text-slate-400 text-sm mb-2 block">التاريخ <span class="text-red-400">*</span></label>
+                <input type="date" name="deduction_date" value="{{ date('Y-m-d') }}" required
+                    class="input-field w-full px-3 py-2 text-sm">
+            </div>
+
+            <div>
+                <label class="text-slate-400 text-sm mb-2 block">المبلغ <span class="text-red-400">*</span></label>
+                <input type="number" step="0.01" name="amount" min="0.01" required
+                    class="input-field w-full px-3 py-2 text-sm" placeholder="0.00">
+            </div>
+
+            <div>
+                <label class="text-slate-400 text-sm mb-2 block">سبب الخصم</label>
+                <input type="text" name="reason"
+                    class="input-field w-full px-3 py-2 text-sm" placeholder="مثال: خصم تجاري، خصم ترويجي">
+            </div>
+
+            <div>
+                <label class="text-slate-400 text-sm mb-2 block">ملاحظات</label>
+                <textarea name="notes" rows="3"
+                    class="input-field w-full px-3 py-2 text-sm" placeholder="ملاحظات إضافية (اختياري)"></textarea>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+                <button type="button" onclick="document.getElementById('deduction-modal').classList.add('hidden')"
+                    class="flex-1 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                    إلغاء
+                </button>
+                <button type="submit"
+                    class="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                    <i class="fas fa-minus-circle"></i> تسجيل الخصم
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 

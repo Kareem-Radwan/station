@@ -52,6 +52,10 @@ Route::middleware('auth')->group(function () {
     // ─── Customer Payments ────────────────────────────────────────────────────────
     Route::resource('customer-payments', CustomerPaymentController::class)->except(['show']);
 
+    // ─── Customer Deductions ──────────────────────────────────────────────────────
+    Route::post('customer-deductions', [\App\Http\Controllers\CustomerDeductionController::class, 'store'])->name('customer-deductions.store');
+    Route::delete('customer-deductions/{customerDeduction}', [\App\Http\Controllers\CustomerDeductionController::class, 'destroy'])->name('customer-deductions.destroy');
+
     // ─── Orders ───────────────────────────────────────────────────────────────────
     Route::resource('orders', OrderController::class);
     Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.update-status');

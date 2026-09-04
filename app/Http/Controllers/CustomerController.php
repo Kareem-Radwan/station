@@ -69,7 +69,7 @@ class CustomerController extends Controller
 
     public function show(Customer $customer)
     {
-        $customer->load(['orders.concreteMix', 'payments', 'credits']);
+        $customer->load(['orders.concreteMix', 'payments', 'credits', 'deductions.recordedBy']);
         return view('customers.show', compact('customer'));
     }
 

@@ -25,6 +25,7 @@ class Customer extends Model
 
     public function orders()   { return $this->hasMany(Order::class); }
     public function payments() { return $this->hasMany(CustomerPayment::class); }
+    public function deductions() { return $this->hasMany(CustomerDeduction::class); }
     public function credits()  { return $this->morphMany(Credit::class, 'creditable'); }
     public function createdBy(){ return $this->belongsTo(User::class, 'created_by'); }
 
@@ -55,16 +56,14 @@ class Customer extends Model
 
     public function getTotalOrdersAmount(): float
     {
-        return (float)$this->orders()->where('status', '!=', 'cancelled')->sum('total_amount');
+        $ordersTotal = (float)$this->orders()->where('status', '!=', 'cancelled')->sum('total_amount');
+        $deductionsTotal = (float)$this->deductions()->sum('amount');
+        return $ordersTotal + $deductionsTotal;
     }
 
     public function getTotalPaid(): float
     {
-        $incoming = (float)$this->payments()->where('amount', '>', 0)->sum('amount')
-                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'in')->sum('amount');
-        $outgoing = abs((float)$this->payments()->where('amount', '<', 0)->sum('amount'))
-                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'out')->sum('amount');
-        return $incoming - $outgoing;
+        return (float)$this->payments()->sum('amount');
     }
 
     public function getOutstandingBalance(): float
@@ -73,11 +72,9 @@ class Customer extends Model
         $totalCash = (float)$this->orders()->where('status', '!=', 'cancelled')->sum('cash_amount');
         $netCreditOrders = $totalOrders - $totalCash;
         
-        $incoming = (float)$this->payments()->where('amount', '>', 0)->sum('amount')
-                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'in')->sum('amount');
-        $outgoing = abs((float)$this->payments()->where('amount', '<', 0)->sum('amount'))
-                  + (float)TreasuryTransaction::where('reference_type', 'customer')->where('reference_id', $this->id)->where('type', 'out')->sum('amount');
+        $deductionsTotal = (float)$this->deductions()->sum('amount');
+        $paymentsTotal = (float)$this->payments()->sum('amount');
 
-        return $netCreditOrders + $outgoing - $incoming;
+        return $netCreditOrders + $deductionsTotal - $paymentsTotal;
     }
 }
