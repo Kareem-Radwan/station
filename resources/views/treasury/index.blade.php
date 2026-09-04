@@ -64,6 +64,23 @@
             <label class="text-slate-400 text-xs mb-1 block">إلى</label>
             <input type="date" name="to_date" value="{{ request('to_date') }}" class="input-field w-full px-3 py-2 text-sm">
         </div>
+        <div class="inline-flex items-center gap-3 p-2 bg-slate-800 border border-slate-700 rounded-lg">
+            <label for="show_order_related" class="flex items-center gap-2.5 cursor-pointer">
+                <input
+                    type="checkbox"
+                    name="show_order_related"
+                    id="show_order_related"
+                    value="1"
+                    {{ $showOrderRelated ? 'checked' : '' }}
+                    onchange="this.form.submit()"
+                    class="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-800"
+                >
+
+                <span class="text-sm text-slate-300 hover:text-white transition-colors">
+                    إظهار متعلقات الطلبات
+                </span>
+            </label>
+        </div>
         <button type="submit" class="btn-primary text-white px-4 py-2 rounded-lg text-sm"><i class="fas fa-search"></i> بحث</button>
         <a href="{{ route('treasury.index') }}" class="text-slate-400 hover:text-white px-3 py-2 text-sm">مسح</a>
     </form>

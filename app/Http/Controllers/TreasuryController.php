@@ -31,27 +31,49 @@ class TreasuryController extends Controller
 
     public function index(Request $request)
     {
+        // Check if we should show order-related transactions (default is unchecked/false)
+        $showOrderRelated = $request->boolean('show_order_related', false);
+        
         $transactions = TreasuryTransaction::query()
             ->when($request->type,      fn($q,$v) => $q->where('type',$v))
             ->when($request->from_date, fn($q,$v) => $q->where('transaction_date','>=',$v))
             ->when($request->to_date,   fn($q,$v) => $q->where('transaction_date','<=',$v))
+            ->when(!$showOrderRelated, function($q) {
+                // Exclude order-related transactions: tax provisions and material costs
+                $q->where(function($query) {
+                    $query->where('description', 'NOT LIKE', '(أخرى) مخصص ضرائب%')
+                            ->where('category', '!=', 'material_cost');
+                });
+            })
             ->latest('transaction_date')
             ->latest('id')
             ->paginate(30)
             ->withQueryString();
 
-        // Current balance from the latest transaction by date+id order
-        $currentBalance = TreasuryTransaction::orderBy('transaction_date', 'desc')
-                            ->orderBy('id', 'desc')
-                            ->value('balance_after') ?? 0;
+        // Build base query for balance calculations
+        $balanceQuery = TreasuryTransaction::query();
         
-        // Total incoming for ALL time
-        $totalIncoming = (float) TreasuryTransaction::where('type', 'in')->sum('amount');
+        // Apply same filter to balance calculations
+        if (!$showOrderRelated) {
+            $balanceQuery->where(function($q) {
+                $q->where('description', 'NOT LIKE', '(أخرى) مخصص ضرائب%')
+                  ->where('category', '!=', 'material_cost');
+            });
+        }
+        
+        // Current balance - calculate from filtered transactions
+        // Get the sum of all filtered transactions to compute balance
+        $totalIn = (clone $balanceQuery)->where('type', 'in')->sum('amount');
+        $totalOut = (clone $balanceQuery)->where('type', 'out')->sum('amount');
+        $currentBalance = $totalIn - $totalOut;
+        
+        // Total incoming
+        $totalIncoming = (float) $totalIn;
             
-        // Total outgoing for ALL time
-        $totalOutgoing = (float) TreasuryTransaction::where('type', 'out')->sum('amount');
+        // Total outgoing
+        $totalOutgoing = (float) $totalOut;
 
-        return view('treasury.index', compact('transactions','currentBalance','totalIncoming','totalOutgoing'));
+        return view('treasury.index', compact('transactions','currentBalance','totalIncoming','totalOutgoing','showOrderRelated'));
     }
 
     // ─── Recalculate Balances (for SQL imports) ───────────────────────────────

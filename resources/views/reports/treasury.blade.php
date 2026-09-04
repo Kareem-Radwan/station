@@ -5,8 +5,8 @@
 @include('partials.page-header', ['title' => 'تقرير حركة الخزينة والمالية', 'icon' => 'fa-vault'])
 
 <div class="card p-6 mb-6">
-    <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-        <div>
+    <form method="GET" class="flex flex-wrap gap-4 items-end">
+        <div class="min-w-36">
             <label class="block text-slate-400 text-xs mb-1">النوع</label>
             <select name="type" class="input-field w-full px-3 py-2 text-sm">
                 <option value="">الكل</option>
@@ -14,18 +14,42 @@
                 <option value="out" {{ request('type')=='out'?'selected':'' }}>صادر (-)</option>
             </select>
         </div>
-        <div>
+        <div class="min-w-48">
+            <label class="block text-slate-400 text-xs mb-1">الفئة</label>
+            <select name="category" class="input-field w-full px-3 py-2 text-sm">
+                <option value="all" {{ request('category')=='all' || !request('category')?'selected':'' }}>الكل</option>
+                @foreach($allCategories as $key => $label)
+                    <option value="{{ $key }}" {{ request('category')==$key?'selected':'' }}>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="min-w-36">
             <label class="block text-slate-400 text-xs mb-1">من تاريخ</label>
             <input type="date" name="from_date" value="{{ request('from_date', today()->startOfMonth()->toDateString()) }}" class="input-field w-full px-3 py-2 text-sm">
         </div>
-        <div>
+        <div class="min-w-36">
             <label class="block text-slate-400 text-xs mb-1">إلى تاريخ</label>
             <input type="date" name="to_date" value="{{ request('to_date', today()->endOfMonth()->toDateString()) }}" class="input-field w-full px-3 py-2 text-sm">
         </div>
-        <div class="flex gap-2">
-            <button type="submit" class="btn-primary text-white px-4 py-2 rounded-lg text-sm w-full"><i class="fas fa-filter"></i> عرض</button>
-            <button type="submit" name="export" value="excel" class="btn-accent text-slate-900 px-4 py-2 rounded-lg text-sm whitespace-nowrap"><i class="fas fa-file-excel"></i> إكسل</button>
+        <div class="inline-flex items-center gap-3 p-2 bg-slate-800 border border-slate-700 rounded-lg">
+            <label for="show_order_related" class="flex items-center gap-2.5 cursor-pointer">
+                <input
+                    type="checkbox"
+                    name="show_order_related"
+                    id="show_order_related"
+                    value="1"
+                    {{ $showOrderRelated ? 'checked' : '' }}
+                    onchange="this.form.submit()"
+                    class="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-800"
+                >
+
+                <span class="text-sm text-slate-300 hover:text-white transition-colors">
+                    إظهار متعلقات الطلبات
+                </span>
+            </label>
         </div>
+        <button type="submit" class="btn-primary text-white px-4 py-2 rounded-lg text-sm"><i class="fas fa-filter"></i> عرض</button>
+        <button type="submit" name="export" value="excel" class="btn-accent text-slate-900 px-4 py-2 rounded-lg text-sm whitespace-nowrap"><i class="fas fa-file-excel"></i> إكسل</button>
     </form>
 </div>
 
@@ -33,17 +57,17 @@
     <div class="stat-card rounded-2xl p-5 border border-amber-500/30 relative overflow-hidden">
         <div class="absolute top-0 left-0 w-full h-1 bg-amber-500"></div>
         <p class="text-slate-400 text-xs mb-1">الرصيد الفعلي الحالي للخزينة</p>
-        <p class="text-2xl font-bold text-amber-400">{{ number_format($currentBalance, 0) }}</p>
+        <p class="text-2xl font-bold text-amber-400">{{ number_format($currentBalance, 2) }}</p>
     </div>
     <div class="stat-card rounded-2xl p-5 border border-slate-700/50 relative overflow-hidden">
         <div class="absolute top-0 left-0 w-full h-1 bg-green-500"></div>
         <p class="text-slate-400 text-xs mb-1">إجمالي الوارد (خلال الفترة)</p>
-        <p class="text-2xl font-bold text-green-400">{{ number_format($totalIn, 0) }}</p>
+        <p class="text-2xl font-bold text-green-400">{{ number_format($totalIn, 2) }}</p>
     </div>
     <div class="stat-card rounded-2xl p-5 border border-slate-700/50 relative overflow-hidden">
         <div class="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
         <p class="text-slate-400 text-xs mb-1">إجمالي الصادر (خلال الفترة)</p>
-        <p class="text-2xl font-bold text-red-400">{{ number_format($totalOut, 0) }}</p>
+        <p class="text-2xl font-bold text-red-400">{{ number_format($totalOut, 2) }}</p>
     </div>
 </div>
 

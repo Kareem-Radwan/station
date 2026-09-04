@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\TreasuryTransaction;
+use App\Models\Expense;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
@@ -19,7 +20,9 @@ class TreasuryExport implements FromCollection, WithHeadings, WithStyles, WithTi
     public function __construct(
         private string $fromDate, 
         private string $toDate,
-        private ?string $type = null
+        private ?string $type = null,
+        private bool $showOrderRelated = false,
+        private ?string $category = null
     ) {}
 
     public function collection()
@@ -27,6 +30,36 @@ class TreasuryExport implements FromCollection, WithHeadings, WithStyles, WithTi
         $query = TreasuryTransaction::query()
             ->whereBetween('transaction_date', [$this->fromDate, $this->toDate])
             ->when($this->type, fn($q, $v) => $q->where('type', $v))
+            ->when(!$this->showOrderRelated, function($q) {
+                // Exclude order-related transactions: tax provisions and material costs
+                $q->where(function($query) {
+                    $query->where('description', 'NOT LIKE', '(أخرى) مخصص ضرائب%')
+                            ->where('category', '!=', 'material_cost');
+                });
+            })
+            ->when($this->category, function($q) {
+                // Check if this category exists in the expenses table
+                $isExpenseCategory = \App\Models\Expense::where('category', $this->category)->exists();
+                
+                if ($isExpenseCategory) {
+                    // Filter by expense reference with matching category OR description starting with category
+                    $q->where(function($query) {
+                        $query->where(function($subQuery) {
+                            // Option 1: Has expense reference with matching category
+                            $subQuery->where('reference_type', 'expense')
+                                     ->whereHas('expense', function($expenseQuery) {
+                                         $expenseQuery->where('category', $this->category);
+                                     });
+                        })->orWhere(function($subQuery) {
+                            // Option 2: Description starts with "category:"
+                            $subQuery->where('description', 'LIKE', $this->category . ':%');
+                        });
+                    });
+                } else {
+                    // Direct category match for treasury-only categories
+                    $q->where('category', $this->category);
+                }
+            })
             ->orderBy('id');
 
         $transactions = $query->get();

@@ -29,6 +29,11 @@ class TreasuryTransaction extends Model
         return $this->belongsTo(User::class, 'recorded_by');
     }
 
+    public function expense()
+    {
+        return $this->belongsTo(Expense::class, 'reference_id')->where('reference_type', 'expense');
+    }
+
     public function getTypeLabelAttribute(): string
     {
         return $this->type === 'in' ? 'وارد' : 'صادر';
@@ -36,6 +41,15 @@ class TreasuryTransaction extends Model
 
     public function getCategoryLabelAttribute(): string
     {
+        // If this is an expense-related transaction, get the category from the expense record
+        if ($this->reference_type === 'expense' && $this->reference_id) {
+            $expense = $this->expense ?? Expense::find($this->reference_id);
+            if ($expense) {
+                return $expense->category_label;
+            }
+        }
+
+        // Otherwise use the standard treasury category mapping
         return match ($this->category) {
             'customer_payment'    => 'دفعة من عميل',
             'supplier_payment'    => 'دفعة لمورد',
@@ -49,6 +63,7 @@ class TreasuryTransaction extends Model
             'receipt_out'         => 'سند صرف',
             'rental'              => 'مصاريف إيجار',
             'expense'             => 'مصروفات عامة',
+            'customer_deduction'   => 'خصم من عميل',
             'contributor_payment_out'             => 'دفعة لمساهم',
             'credit_payment'      => 'سداد ديون',
             'rental_maintenance'  => 'صيانة المعدات المستأجرة',

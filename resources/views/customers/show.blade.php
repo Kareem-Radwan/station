@@ -173,6 +173,64 @@
     </div>
 </div>
 
+{{-- Payments Table --}}
+<div class="card overflow-hidden mt-6">
+    <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+        <h3 class="text-white font-bold flex items-center gap-2">
+            <i class="fas fa-hand-holding-usd text-green-400"></i> سجل المدفوعات ({{ $customer->payments->count() }})
+        </h3>
+        <a href="{{ route('customer-payments.create') }}?customer_id={{ $customer->id }}" 
+           class="btn-primary text-white px-3 py-1.5 rounded-lg text-xs">
+            <i class="fas fa-plus"></i> دفعة جديدة
+        </a>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-slate-800/50 border-b border-slate-700">
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">التاريخ</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">المبلغ</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">طريقة الدفع</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">الطلب المرتبط</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">ملاحظات</th>
+                    <th class="px-4 py-3 text-right text-slate-400 font-medium">المسجل بواسطة</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                @forelse($payments as $payment)
+                <tr class="table-row">
+                    <td class="px-4 py-3 text-slate-300">{{ $payment->payment_date->format('d/m/Y') }}</td>
+                    <td class="px-4 py-3 font-bold {{ $payment->amount >= 0 ? 'text-green-400' : 'text-red-400' }}">
+                        {{ $payment->amount >= 0 ? '+' : '' }}{{ number_format($payment->amount, 2) }}
+                    </td>
+                    <td class="px-4 py-3 text-slate-400 text-xs">
+                        {{ ['cash' => 'نقدي', 'bank_transfer' => 'تحويل بنكي', 'check' => 'شيك'][$payment->payment_method] ?? $payment->payment_method }}
+                    </td>
+                    <td class="px-4 py-3">
+                        @if($payment->order_id)
+                            <a href="{{ route('orders.show', $payment->order_id) }}" class="text-blue-400 hover:text-blue-300 text-xs">
+                                طلب #{{ $payment->order_id }}
+                            </a>
+                        @else
+                            <span class="text-slate-500 text-xs">دفعة مستقلة</span>
+                        @endif
+                    </td>
+                    <td class="px-4 py-3 text-slate-400 text-xs">{{ $payment->notes ?? '-' }}</td>
+                    <td class="px-4 py-3 text-slate-400 text-xs">{{ $payment->recordedBy?->name ?? '-' }}</td>
+                </tr>
+                @empty
+                <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">لا توجد مدفوعات</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+    @if($payments->hasPages())
+    <div class="px-4 py-3 border-t border-slate-800">
+        {{ $payments->links() }}
+    </div>
+    @endif
+</div>
+
 {{-- Deductions Table --}}
 @if($customer->deductions->count() > 0)
 <div class="card mt-6 overflow-hidden">

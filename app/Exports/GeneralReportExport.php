@@ -225,6 +225,7 @@ class GeneralReportTreasuryOutSheet implements
             'receipt_out'         => 'سند صرف',
             'rental'              => 'مصاريف إيجار',
             'expense'             => 'مصروفات عامة',
+            'customer_deduction'   => 'خصم من عميل',
             'contributor_payment_out'             => 'دفعة لمساهم',
             'credit_payment'      => 'سداد ديون',
             'rental_maintenance'  => 'صيانة المعدات المستأجرة',

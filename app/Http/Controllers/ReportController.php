@@ -433,17 +433,104 @@ class ReportController extends Controller
         $from = $request->from_date ?? now()->startOfMonth()->toDateString();
         $to   = $request->to_date ?? now()->endOfMonth()->toDateString();
 
+        // Check if we should show order-related transactions (default is unchecked/false)
+        $showOrderRelated = $request->boolean('show_order_related', false);
+
+        // Get category filter
+        $categoryFilter = $request->category;
+
         $query = \App\Models\TreasuryTransaction::query()
             ->whereBetween('transaction_date', [$from, $to])
-            ->when($request->type, fn($q, $v) => $q->where('type', $v));
+            ->when($request->type, fn($q, $v) => $q->where('type', $v))
+            ->when(!$showOrderRelated, function($q) {
+                // Exclude order-related transactions: tax provisions and material costs
+                $q->where(function($query) {
+                    $query->where('description', 'NOT LIKE', '(أخرى) مخصص ضرائب%')
+                            ->where('category', '!=', 'material_cost');
+                });
+            })
+            ->when($categoryFilter && $categoryFilter !== 'all', function($q) use ($categoryFilter) {
+                // Check if this category exists in the expenses table
+                $isExpenseCategory = \App\Models\Expense::where('category', $categoryFilter)->exists();
+                
+                if ($isExpenseCategory) {
+                    // Filter by expense reference with matching category OR description starting with category
+                    $q->where(function($query) use ($categoryFilter) {
+                        $query->where(function($subQuery) use ($categoryFilter) {
+                            // Option 1: Has expense reference with matching category
+                            $subQuery->where('reference_type', 'expense')
+                                     ->whereHas('expense', function($expenseQuery) use ($categoryFilter) {
+                                         $expenseQuery->where('category', $categoryFilter);
+                                     });
+                        })->orWhere(function($subQuery) use ($categoryFilter) {
+                            // Option 2: Description starts with "category:"
+                            $subQuery->where('description', 'LIKE', $categoryFilter . ':%');
+                        });
+                    });
+                } else {
+                    // Direct category match for treasury-only categories
+                    $q->where('category', $categoryFilter);
+                }
+            });
 
+        // Total incoming and outgoing for the filtered period
         $totalIn = (float) (clone $query)->where('type', 'in')->sum('amount');
         $totalOut = (float) (clone $query)->where('type', 'out')->sum('amount');
-        // Balance for the filtered period (not the actual current balance)
-        $currentBalance = \App\Models\TreasuryTransaction::where('type','in')->sum('amount') - \App\Models\TreasuryTransaction::where('type','out')->sum('amount');
+        
+        // Current balance - calculate from the filtered period ONLY
+        $currentBalance = $totalIn - $totalOut;
+        
         $transactions = $query->orderBy('id')->paginate(25)->withQueryString();
 
-        return view('reports.treasury', compact('transactions', 'from', 'to', 'totalIn', 'totalOut', 'currentBalance'));
+        // Get all available categories for the dropdown
+        $baseQuery = \App\Models\TreasuryTransaction::query()
+            ->when(!$showOrderRelated, function($q) {
+                $q->where(function($query) {
+                    $query->where('description', 'NOT LIKE', '(أخرى) مخصص ضرائب%')
+                            ->where('category', '!=', 'material_cost');
+                });
+            });
+
+        // Get distinct treasury categories (direct categories from treasury_transactions table)
+        $treasuryCategories = (clone $baseQuery)
+            ->select('category')
+            ->distinct()
+            ->pluck('category')
+            ->filter()
+            ->toArray();
+
+        // Get ALL expense categories from the expenses table (not just those linked to treasury)
+        // This ensures custom categories like "ايجار مضخة 42" appear in the dropdown
+        $expenseCategories = \App\Models\Expense::select('category')
+            ->distinct()
+            ->pluck('category')
+            ->filter()
+            ->toArray();
+
+        // Merge treasury categories and expense categories
+        $allCategories = collect(array_merge($treasuryCategories, $expenseCategories))
+            ->unique()
+            ->sort()
+            ->mapWithKeys(function($cat) {
+                // Get label from expense categories first (for both predefined and custom)
+                $expenseCategoryList = \App\Models\Expense::categoryList();
+                if (isset($expenseCategoryList[$cat])) {
+                    return [$cat => $expenseCategoryList[$cat]];
+                }
+                
+                // For custom expense categories, return as-is (Arabic text)
+                $expenseExists = \App\Models\Expense::where('category', $cat)->exists();
+                if ($expenseExists) {
+                    return [$cat => $cat]; // Custom category, use the text as-is
+                }
+                
+                // Otherwise get from treasury transaction predefined labels
+                $dummyTransaction = new \App\Models\TreasuryTransaction(['category' => $cat]);
+                return [$cat => $dummyTransaction->category_label];
+            })
+            ->toArray();
+
+        return view('reports.treasury', compact('transactions', 'from', 'to', 'totalIn', 'totalOut', 'currentBalance', 'showOrderRelated', 'allCategories', 'categoryFilter'));
     }
 
     public function expenses(Request $request)
@@ -958,9 +1045,11 @@ class ReportController extends Controller
             $from = $request->from_date ?? now()->startOfMonth()->toDateString();
             $to   = $request->to_date ?? now()->endOfMonth()->toDateString();
             $type = $request->type ?? null;  // Pass type filter
+            $showOrderRelated = $request->boolean('show_order_related', false);  // Pass show_order_related filter
+            $category = $request->category && $request->category !== 'all' ? $request->category : null;  // Pass category filter
 
             return Excel::download(
-                new TreasuryExport($from, $to, $type),
+                new TreasuryExport($from, $to, $type, $showOrderRelated, $category),
                 'treasury-' . now()->format('Y-m-d') . '.xlsx',
                 \Maatwebsite\Excel\Excel::XLSX
             );

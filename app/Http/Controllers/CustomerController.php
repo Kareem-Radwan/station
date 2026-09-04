@@ -69,8 +69,16 @@ class CustomerController extends Controller
 
     public function show(Customer $customer)
     {
-        $customer->load(['orders.concreteMix', 'payments', 'credits', 'deductions.recordedBy']);
-        return view('customers.show', compact('customer'));
+        $customer->load(['orders.concreteMix', 'credits', 'deductions.recordedBy']);
+        
+        // Paginate payments separately to avoid loading all at once
+        $payments = $customer->payments()
+            ->with(['order', 'recordedBy'])
+            ->latest('payment_date')
+            ->latest('id')
+            ->paginate(15, ['*'], 'payments_page');
+        
+        return view('customers.show', compact('customer', 'payments'));
     }
 
     public function edit(Customer $customer)
